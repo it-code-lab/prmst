@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+.DS_Store
+outputs/*.mp4
+projects/*/render.log
+remotion/public/projects/*
+projects/
+dist/
+license.json
+license_required.flag
+release.config.json
+LICENSE.txt
+README.md
+release.config.example.json
+release.config.example copy.json
+docs/RELEASE_CONTENTS.md
+docs/SELLER_GUIDE.md
+docs/TROUBLESHOOTING.md
+docs/USER_GUIDE.md
+templates/license.html
+*.jpg

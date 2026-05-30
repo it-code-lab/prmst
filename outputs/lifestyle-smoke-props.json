@@ -1,0 +1,52 @@
+{
+  "title": "ReadBright Promo",
+  "productName": "ReadBright",
+  "targetUrl": "https://lab.readernook.com/",
+  "cta": "Try ReadBright FREE",
+  "format": "vertical",
+  "template": "lifestyle",
+  "durationSeconds": 8,
+  "fps": 30,
+  "screenAsset": "projects/20260521_142924_readbright-promo/screen.mp4",
+  "screenDurationSeconds": 11.875,
+  "voiceoverAsset": null,
+  "logoAsset": null,
+  "scenes": [
+    {
+      "start": 0,
+      "end": 3,
+      "caption": "Story time,\njust got smarter",
+      "background": "office-desk",
+      "device": "laptop-silver",
+      "angle": "front-center",
+      "motion": "screen-focus",
+      "screenZoom": 1.12,
+      "transition": "soft-fade",
+      "captionStyle": "glass-card"
+    },
+    {
+      "start": 3,
+      "end": 6,
+      "caption": "tap any word to\nhear it out",
+      "background": "cafe-table",
+      "device": "phone-modern",
+      "angle": "floating-hero",
+      "motion": "device-tilt",
+      "screenZoom": 1.18,
+      "transition": "slide-up",
+      "captionStyle": "white-chip"
+    },
+    {
+      "start": 6,
+      "end": 8,
+      "caption": "Try ReadBright FREE",
+      "background": "dark-studio",
+      "device": "tablet-pro",
+      "angle": "low-desk-right",
+      "motion": "cta-push",
+      "screenZoom": 1.08,
+      "transition": "soft-fade",
+      "captionStyle": "bold-bottom"
+    }
+  ]
+}

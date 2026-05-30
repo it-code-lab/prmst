@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Premium Promo Video Studio</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="studio-header">
+      <div class="brand-mark">PS</div>
+      <div class="studio-title">
+        <p class="eyebrow">Promo Studio</p>
+        <h1>Advertisement Video Studio</h1>
+        <p class="subtitle">Create polished product videos from screen recordings, voiceover, captions, and scene direction.</p>
+      </div>
+      <div class="studio-status">
+        <span><i></i> Local preview</span>
+        <span>Remotion ready</span>
+        <button id="themeToggleBtn" class="theme-toggle" type="button" aria-pressed="false">Light mode</button>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="panel">
+        <div class="panel-title">
+          <div>
+            <span class="section-kicker">Step 1</span>
+            <h2>Project setup</h2>
+          </div>
+          <span>Draft</span>
+        </div>
+
+        <form id="projectForm">
+          <section class="form-card">
+            <div class="form-card-head">
+              <h3>Identity</h3>
+              <span>Project basics</span>
+            </div>
+            <div class="two-col">
+              <label>
+                Project title
+                <input name="title" value="ReadBright Promo" required />
+              </label>
+              <label>
+                Product name
+                <input name="productName" value="ReadBright" required />
+              </label>
+            </div>
+
+            <label>
+              Website / product URL
+              <input name="targetUrl" value="https://lab.readernook.com/" />
+            </label>
+
+            <div class="four-col">
+              <label>
+                CTA text
+                <input name="cta" value="Try it free today" />
+              </label>
+              <label>
+                Duration seconds
+                <input name="durationSeconds" type="number" min="5" max="600" value="30" />
+              </label>
+              <label>
+                Format
+                <select name="format">
+                  <option value="vertical" selected>Vertical 9:16</option>
+                  <option value="landscape">Landscape 16:9</option>
+                  <option value="square">Square 1:1</option>
+                </select>
+              </label>
+              <label>
+                Template
+                <select name="template">
+                  <option value="lifestyle" selected>Lifestyle tablet ad</option>
+                  <option value="tablet">Gradient tablet demo</option>
+                  <option value="laptop">Laptop SaaS demo</option>
+                  <option value="phone">Phone app demo</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <div class="panel-title small">
+            <div>
+              <span class="section-kicker">Step 2</span>
+              <h2>Media</h2>
+            </div>
+            <span>Assets</span>
+          </div>
+
+          <section class="upload-row">
+            <label class="upload-box">
+              <span>Screen recording video</span>
+              <input name="screenRecording" type="file" accept="video/mp4,video/webm,video/quicktime,video/x-matroska" required />
+            </label>
+            <label class="upload-box muted">
+              <span>Optional voiceover</span>
+              <input id="voiceoverInput" name="voiceover" type="file" accept="audio/*" />
+            </label>
+            <label class="upload-box muted">
+              <span>Optional background music</span>
+              <input name="backgroundMusic" type="file" accept="audio/*" />
+            </label>
+            <label class="upload-box muted">
+              <span>Optional logo</span>
+              <input name="logo" type="file" accept="image/*" />
+            </label>
+          </section>
+
+          <section class="thumbnail-bumper-panel">
+            <label id="thumbnailPasteZone" class="upload-box muted thumbnail-upload" tabindex="0">
+              <span>Optional thumbnail frame</span>
+              <input id="thumbnailInput" name="thumbnailImage" type="file" accept="image/*" />
+              <img id="thumbnailPreview" class="thumbnail-preview hidden" alt="" />
+              <small id="thumbnailPasteHint">Upload an image or focus here and paste with Ctrl+V.</small>
+            </label>
+            <div class="thumbnail-settings-grid">
+              <label>
+                Add thumbnail
+                <select id="thumbnailBumperPosition" name="thumbnailBumperPosition">
+                  <option value="none" selected>Do not add</option>
+                  <option value="start">At beginning</option>
+                  <option value="end">At end</option>
+                </select>
+              </label>
+              <label>
+                Duration seconds
+                <input id="thumbnailBumperDuration" name="thumbnailBumperDuration" type="number" min="0.1" max="2" step="0.1" value="0.5" />
+              </label>
+              <label>
+                Image fit
+                <select id="thumbnailBumperFit" name="thumbnailBumperFit">
+                  <option value="cover" selected>Fill frame</option>
+                  <option value="contain">Fit entire image</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="layout-lift-panel">
+            <div>
+              <strong>Optional layout lift</strong>
+              <p>Raise the device or CTA when portrait videos feel too close to the bottom.</p>
+            </div>
+            <label>
+              Device lift
+              <select name="layoutDeviceLift">
+                <option value="0" selected>Default</option>
+                <option value="4">Slight up</option>
+                <option value="8">More up</option>
+                <option value="12">High up</option>
+              </select>
+            </label>
+            <label>
+              CTA lift
+              <select name="layoutCtaLift">
+                <option value="0" selected>Default</option>
+                <option value="3">Slight up</option>
+                <option value="6">More up</option>
+                <option value="9">High up</option>
+              </select>
+            </label>
+          </section>
+
+          <div class="panel-title small">
+            <div>
+              <span class="section-kicker">Step 3</span>
+              <h2>Captions and scenes</h2>
+            </div>
+            <span>Timeline</span>
+          </div>
+
+          <section class="global-caption-panel">
+            <div>
+              <strong>Global scene look</strong>
+              <p>Applied to every scene unless visual overrides are enabled inside a scene.</p>
+            </div>
+            <div class="global-visual-grid">
+              <div class="design-field wide">
+                <span>Background</span>
+                <div id="globalBackgrounds" class="thumb-options compact"></div>
+              </div>
+              <div class="design-field wide">
+                <span>Device</span>
+                <div id="globalDevices" class="device-options compact"></div>
+              </div>
+              <label class="design-field">
+                Angle
+                <select id="globalAngle"></select>
+              </label>
+              <label class="design-field">
+                Animation
+                <select id="globalMotion"></select>
+              </label>
+              <label class="design-field zoom-field">
+                Animation amount <strong id="globalMotionAmountValue">2.20×</strong>
+                <input id="globalMotionAmount" type="range" min="0.5" max="2.2" step="0.05" value="2.2" />
+              </label>
+              <label class="design-field">
+                Transition
+                <select id="globalTransition"></select>
+              </label>
+              <label class="design-field zoom-field">
+                Screen zoom <strong id="globalScreenZoomValue">1.00×</strong>
+                <input id="globalScreenZoom" type="range" min="1" max="1.6" step="0.01" value="1" />
+              </label>
+            </div>
+          </section>
+
+          <section class="global-caption-panel">
+            <div>
+              <strong>Global caption style</strong>
+              <p>Applied to every scene unless caption overrides are enabled inside a scene.</p>
+            </div>
+            <div id="globalCaptionStyles" class="caption-style-options compact"></div>
+            <div class="global-caption-fields">
+              <label>
+                Position
+                <select id="globalCaptionPosition"></select>
+              </label>
+              <label>
+                Size
+                <select id="globalCaptionSize"></select>
+              </label>
+              <label>
+                Accent
+                <select id="globalCaptionAccent"></select>
+              </label>
+            </div>
+          </section>
+
+          <div class="scene-actions">
+            <button type="button" id="addSceneBtn" class="secondary">+ Add scene</button>
+            <button type="button" id="addSceneAfterBtn" class="secondary">+ Insert scene after selected</button>
+            <button type="button" id="loadSampleBtn" class="secondary">Load sample scenes</button>
+            <button type="button" id="transcribeVoiceoverBtn" class="secondary">Generate from voiceover</button>
+          </div>
+
+          <section class="pacing-panel">
+            <div>
+              <strong>Scene pacing</strong>
+              <p>Controls transcript scene length so visuals do not change too quickly.</p>
+            </div>
+            <label>
+              Minimum
+              <input id="minSceneSeconds" type="number" min="1" max="8" step="0.25" value="2.5" />
+            </label>
+            <label>
+              Preferred
+              <input id="targetSceneSeconds" type="number" min="2" max="12" step="0.25" value="4.5" />
+            </label>
+            <label>
+              Maximum
+              <input id="maxSceneSeconds" type="number" min="3" max="16" step="0.25" value="7" />
+            </label>
+          </section>
+
+          <div class="table-wrap">
+            <table id="sceneTable">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Scene</th>
+                  <th>Length</th>
+                  <th>Caption</th>
+                  <th>Narration / notes</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="panel-title small">
+            <div>
+              <span class="section-kicker">Step 4</span>
+              <h2>Timeline clips</h2>
+            </div>
+            <span>Optional</span>
+          </div>
+
+          <div class="helper-panel">
+            <div>
+              <strong>Add clips from any scene row</strong>
+              <p>Use the clip button beside a scene to insert b-roll, overlays, or temporary device-screen replacements directly after that scene. Drag clip rows below to reorder clips that share the same placement.</p>
+            </div>
+            <button type="button" id="addClipBtn" class="secondary">+ Add clip at start</button>
+          </div>
+
+          <div class="table-wrap">
+            <table id="clipTable">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Placement</th>
+                  <th>Duration</th>
+                  <th>Mode</th>
+                  <th>Clip video</th>
+                  <th>Label</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="save-bar">
+            <div>
+              <strong>Ready for preview</strong>
+              <span>Save the project to open the preview studio.</span>
+            </div>
+            <button class="primary" type="submit">Save Project</button>
+          </div>
+        </form>
+
+        <div id="message" class="message hidden"></div>
+      </section>
+
+      <aside class="panel side-panel">
+        <div class="panel-title">
+          <div>
+            <span class="section-kicker">Workspace</span>
+            <h2>Projects</h2>
+          </div>
+          <button id="refreshProjectsBtn" class="secondary small-btn">Refresh</button>
+        </div>
+        <div id="projectsSummary" class="projects-summary">
+          <div><strong>0</strong><span>Total</span></div>
+          <div><strong>0</strong><span>Drafts</span></div>
+          <div><strong>0</strong><span>Rendered</span></div>
+        </div>
+        <div id="projectsList" class="projects-list"></div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

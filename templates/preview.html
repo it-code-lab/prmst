@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ project.title }} Preview</title>
+  <link rel="stylesheet" href="/static/preview.css?v={{ static_version }}" />
+</head>
+<body class="preview-page" data-project-id="{{ project.id }}">
+  <main class="preview-shell">
+    <section class="preview-toolbar">
+      <a href="/" class="toolbar-link">Back</a>
+      <div>
+        <h1>{{ project.title }}</h1>
+        <p>{{ project.productName }} · {{ project.format }} · {{ project.durationSeconds }}s</p>
+      </div>
+      <div class="toolbar-actions">
+        <button id="playBtn" type="button" title="Space or K">Play</button>
+        <button id="pauseBtn" type="button" title="Space or K">Pause</button>
+        <button id="resumeBtn" type="button" title="Space or K">Resume</button>
+        <button id="stopBtn" type="button" title="S">Stop</button>
+        <button id="replayBtn" type="button" title="R">Replay</button>
+        <button id="cleanBtn" type="button" title="C">Clean view</button>
+        <button id="renderBtn" type="button">Render MP4</button>
+        <a id="mp4Link" href="{{ project.outputUrl or '#' }}" target="_blank" class="toolbar-link{% if not project.outputUrl %} hidden{% endif %}">MP4</a>
+        <span id="renderStatus" class="render-status" aria-live="polite"></span>
+      </div>
+    </section>
+    <section id="captionStyleTray" class="caption-style-tray" aria-label="Caption style preview picker"></section>
+    <section class="caption-controls" aria-label="Preview caption controls">
+      <label>
+        Position
+        <select id="previewCaptionPosition">
+          <option value="">Scene default</option>
+          <option value="top">Top</option>
+          <option value="center">Center</option>
+          <option value="bottom">Bottom</option>
+          <option value="device">Near device</option>
+        </select>
+      </label>
+      <label>
+        Words
+        <input id="previewWordsPerGroup" type="range" min="1" max="8" step="1" value="3" />
+        <strong id="previewWordsValue">3</strong>
+      </label>
+      <label>
+        Highlight
+        <select id="previewHighlightMode">
+          <option value="word">Current word</option>
+          <option value="trail">Karaoke trail</option>
+          <option value="pulse">Pulse word</option>
+          <option value="none">None</option>
+        </select>
+      </label>
+      <label>
+        Size
+        <select id="previewCaptionSize">
+          <option value="">Scene default</option>
+          <option value="compact">Compact</option>
+          <option value="standard">Standard</option>
+          <option value="large">Large</option>
+          <option value="hero">Hero</option>
+        </select>
+      </label>
+      <button id="resetCaptionPreviewBtn" type="button">Reset</button>
+      <span id="captionTimingBadge" class="caption-timing-badge">Timing: estimated</span>
+    </section>
+    <section class="audio-controls" aria-label="Preview audio controls">
+      <label>
+        <span>Voiceover</span>
+        <input id="voiceoverEnabled" type="checkbox" checked />
+      </label>
+      <label class="volume-field">
+        Voice volume
+        <input id="voiceoverVolume" type="range" min="0" max="1" step="0.01" value="1.0" />
+        <strong id="voiceoverVolumeValue">100%</strong>
+      </label>
+      <label>
+        <span>Music</span>
+        <input id="musicEnabled" type="checkbox" checked />
+      </label>
+      <label class="volume-field">
+        Music volume
+        <input id="musicVolume" type="range" min="0" max="1" step="0.01" value="0.18" />
+        <strong id="musicVolumeValue">18%</strong>
+      </label>
+      <span id="audioStatus" class="audio-status">Audio ready</span>
+    </section>
+    <section class="preview-transport" aria-label="Preview timeline controls">
+      <div class="time-readout">
+        <strong id="currentTimeLabel">0:00</strong>
+        <span>/</span>
+        <span id="durationTimeLabel">0:00</span>
+      </div>
+      <input id="previewScrubber" type="range" min="0" max="{{ project.durationSeconds }}" step="0.01" value="0" />
+      <label>
+        Speed
+        <select id="previewSpeed">
+          <option value="0.75">0.75x</option>
+          <option value="1" selected>1x</option>
+          <option value="1.25">1.25x</option>
+          <option value="1.5">1.5x</option>
+        </select>
+      </label>
+      <button id="recordReadyBtn" type="button" title="Shift + R">Record ready</button>
+    </section>
+    <section class="shortcut-strip" aria-label="Keyboard shortcuts">
+      <span><kbd>Space</kbd>/<kbd>K</kbd> Play</span>
+      <span><kbd>C</kbd> Clean</span>
+      <span><kbd>R</kbd> Replay</span>
+      <span><kbd>Shift</kbd>+<kbd>R</kbd> Record ready</span>
+      <span><kbd>S</kbd> Stop</span>
+      <span><kbd>Esc</kbd> Exit clean</span>
+    </section>
+
+    <section id="previewStage" class="preview-stage vertical">
+      <div class="scene-camera">
+        <img id="backgroundImage" class="room-bg" alt="" />
+        <video id="backgroundClipVideo" class="timeline-clip background-clip hidden" muted playsinline preload="auto"></video>
+        <div class="warm-overlay"></div>
+        <div class="tablet-stage">
+          <div class="tablet-shell">
+            <canvas id="screenCanvas" class="screen-canvas"></canvas>
+            <video id="screenVideo" class="screen-source" muted playsinline preload="auto"></video>
+            <video id="deviceClipVideo" class="screen-source" muted playsinline preload="auto"></video>
+            <div class="tablet-glass"></div>
+          </div>
+        </div>
+      </div>
+      <video id="fullClipVideo" class="timeline-clip full-clip hidden" muted playsinline preload="auto"></video>
+      <video id="overlayClipVideo" class="timeline-clip overlay-clip hidden" muted playsinline preload="auto"></video>
+      <img id="logoImage" class="preview-logo hidden" alt="" />
+      <div id="captionChip" class="caption-chip"></div>
+      <div id="ctaPill" class="cta-pill hidden"></div>
+      <img id="thumbnailBumperImage" class="thumbnail-bumper-image hidden" alt="" />
+      <div id="recordCountdown" class="record-countdown hidden">3</div>
+    </section>
+    <audio id="voiceoverAudio" preload="auto"></audio>
+    <audio id="musicAudio" preload="auto" loop></audio>
+  </main>
+
+  <script id="projectData" type="application/json">{{ project | tojson }}</script>
+  <script src="/static/preview.js?v={{ static_version }}"></script>
+</body>
+</html>
