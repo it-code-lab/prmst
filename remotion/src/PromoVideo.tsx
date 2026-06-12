@@ -30,7 +30,12 @@ type Scene = {
     | 'meeting-room'
     | 'evening-desk'
     | 'kitchen-counter'
-    | 'creator-studio';
+    | 'creator-studio'
+    | 'story-kids'
+    | 'story-inspirational'
+    | 'story-hindu-devotional'
+    | 'story-talk'
+    | 'story-scary';
   device?: 'tablet-pro' | 'phone-modern' | 'laptop-silver' | 'browser-window' | 'full-screen';
   angle?: 'low-desk-left' | 'low-desk-right' | 'front-center' | 'floating-hero';
   motion?: 'slow-push-in' | 'screen-focus' | 'pan-left' | 'pan-right' | 'device-tilt' | 'cta-push';
@@ -81,7 +86,7 @@ export type PromoProps = {
   template: 'lifestyle' | 'tablet' | 'laptop' | 'phone';
   durationSeconds: number;
   fps: number;
-  screenAsset: string;
+  screenAsset?: string | null;
   screenDurationSeconds?: number | null;
   voiceoverAsset?: string | null;
   backgroundMusicAsset?: string | null;
@@ -98,9 +103,19 @@ type PreviewSettings = {
   captions?: {
     style?: Scene['captionStyle'] | '';
     position?: Scene['captionPosition'] | '';
+    groupMode?: 'words' | 'sentences';
     wordsPerGroup?: number;
+    sentencesPerGroup?: number;
     highlightMode?: 'word' | 'trail' | 'pulse' | 'none';
     size?: Scene['captionSize'] | '';
+    boxMode?: 'single' | 'lines';
+    paragraphAlign?: 'left' | 'center' | 'right' | 'justify';
+    fontFamily?: '' | 'Inter' | 'Arial' | 'Georgia' | 'Merriweather' | 'Verdana' | 'Trebuchet MS' | 'Tahoma' | 'Comic Sans MS';
+    fontColor?: string;
+    fontSizePercent?: number;
+    fontWeight?: '' | '500' | '650' | '800' | '950';
+    activeStyle?: 'color' | 'pill' | 'underline' | 'glow' | 'none';
+    activeColor?: string;
   };
   audio?: {
     voiceoverEnabled?: boolean;
@@ -131,7 +146,7 @@ export const defaultPromoProps: PromoProps = {
   thumbnailBumper: {position: 'none', durationSeconds: 0.5, fit: 'cover'},
   layout: {deviceLift: 0, ctaLift: 0},
   previewSettings: {
-    captions: {style: '', position: '', wordsPerGroup: 3, highlightMode: 'word', size: ''},
+    captions: {style: '', position: '', groupMode: 'words', wordsPerGroup: 3, sentencesPerGroup: 1, highlightMode: 'word', size: '', boxMode: 'single', paragraphAlign: 'center', fontFamily: '', fontColor: '', fontSizePercent: 100, fontWeight: '', activeStyle: 'color', activeColor: '#facc15'},
     audio: {voiceoverEnabled: true, voiceoverVolume: 1.0, musicEnabled: true, musicVolume: 0.18},
     playbackRate: 1,
   },
@@ -238,6 +253,22 @@ const backgroundAssets = {
   'evening-desk': 'assets/background-evening-desk.png',
   'kitchen-counter': 'assets/background-kitchen-counter.png',
   'creator-studio': 'assets/background-creator-studio.png',
+  'story-kids': 'assets/background-story-kids.svg',
+  'story-inspirational': 'assets/background-story-inspirational.svg',
+  'story-hindu-devotional': 'assets/background-story-hindu-devotional.svg',
+  'story-talk': 'assets/background-story-talk.svg',
+  'story-scary': 'assets/background-story-scary.svg',
+};
+
+const captionFontStacks: Record<string, string> = {
+  Inter: 'Inter, Arial, sans-serif',
+  Arial: 'Arial, Helvetica, sans-serif',
+  Georgia: 'Georgia, Times New Roman, serif',
+  Merriweather: 'Merriweather, Georgia, serif',
+  Verdana: 'Verdana, Geneva, sans-serif',
+  'Trebuchet MS': 'Trebuchet MS, Arial, sans-serif',
+  Tahoma: 'Tahoma, Geneva, sans-serif',
+  'Comic Sans MS': 'Comic Sans MS, Comic Sans, cursive',
 };
 
 export const PromoVideo: React.FC<PromoProps> = (props) => {
@@ -535,33 +566,47 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 }
 
 const CaptionChip: React.FC<{caption: string; isLandscape: boolean; scene: Scene & typeof sceneDefaults; seconds?: number; previewSettings?: PreviewSettings}> = ({caption, isLandscape, scene, seconds = 0, previewSettings}) => {
-  const wordsPerGroup = clampNumber(previewSettings?.captions?.wordsPerGroup, 1, 8, 3);
-  const highlightMode = previewSettings?.captions?.highlightMode || 'word';
-  const grouped = captionWordGroup(sceneCaptionWords(scene, caption), scene, seconds, wordsPerGroup);
+  const captions = previewSettings?.captions || {};
+  const groupMode = captions.groupMode === 'sentences' ? 'sentences' : 'words';
+  const wordsPerGroup = clampNumber(captions.wordsPerGroup, 1, 8, 3);
+  const sentencesPerGroup = clampNumber(captions.sentencesPerGroup, 1, 4, 1);
+  const highlightMode = captions.highlightMode || 'word';
+  const boxMode = captions.boxMode === 'lines' ? 'lines' : 'single';
+  const paragraphAlign = normalizeParagraphAlign(captions.paragraphAlign);
+  const fontFamily = captions.fontFamily && captionFontStacks[captions.fontFamily] ? captionFontStacks[captions.fontFamily] : undefined;
+  const fontColor = safeCaptionHexColor(captions.fontColor, '');
+  const fontWeight = captions.fontWeight || undefined;
+  const activeStyle = captions.activeStyle || 'color';
+  const activeColor = safeCaptionHexColor(captions.activeColor, '#facc15');
+  const timedWords = sceneCaptionWords(scene, caption);
+  const grouped = groupMode === 'sentences'
+    ? captionSentenceGroup(timedWords, scene, seconds, sentencesPerGroup)
+    : captionWordGroup(timedWords, scene, seconds, wordsPerGroup);
+  const fallbackTokens = String(caption || '').split(/\n+/).filter(Boolean).map((line) => line.split(/\s+/).filter(Boolean).map((word, index) => ({text: word, index, active: false, past: false, progress: 0})));
   const lines = grouped.words.length
-    ? splitCaptionTokens(grouped.words)
-    : String(caption || '').split(/\n+/).filter(Boolean).map((line) => line.split(/\s+/).filter(Boolean).map((word, index) => ({text: word, index, active: false, past: false, progress: 0})));
+    ? (boxMode === 'lines' ? splitCaptionTokens(grouped.words) : [grouped.words])
+    : (boxMode === 'lines' ? fallbackTokens : [fallbackTokens.flat()]);
   const style = scene.captionStyle || 'white-chip';
   const isGlass = style === 'glass-card';
   const isBottom = style === 'bold-bottom';
-  const fontSize = captionFontSize(scene, isLandscape);
+  const fontSize = captionFontSize(scene, isLandscape) * (clampNumber(captions.fontSizePercent, 70, 180, 100) / 100);
   return (
     <div
       style={{
         display: 'inline-flex',
         flexDirection: 'column',
         alignItems: style === 'device-callout' ? 'flex-start' : 'center',
-        gap: style === 'kinetic-stack' ? 10 : 5,
+        gap: boxMode === 'single' ? 0 : (style === 'kinetic-stack' ? 10 : 5),
         maxWidth: isLandscape ? 560 : 900,
       }}
     >
       {(lines.length ? lines : [[{text: caption, index: 0, active: false, past: false, progress: 0}]]).map((line, index) => (
         <div
           key={`${line.map((token) => token.text).join(' ')}-${index}`}
-          style={captionLineStyle(style, index, fontSize, isLandscape)}
+          style={captionLineStyle(style, index, fontSize, isLandscape, {paragraphAlign, fontFamily, fontColor, fontWeight})}
         >
           {line.map((token) => (
-            <span key={`${token.text}-${token.index}`} style={captionWordStyle(token, style, highlightMode)}>
+            <span key={`${token.text}-${token.index}`} style={captionWordStyle(token, style, highlightMode, activeStyle, activeColor)}>
               {token.text}
             </span>
           ))}
@@ -613,29 +658,73 @@ function cleanCaptionWord(word: unknown): string {
   return String(word || '').replace(/\s+/g, ' ').trim();
 }
 
+function safeCaptionHexColor(value: unknown, fallback: string): string {
+  const color = String(value || '').trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
+}
+
+function normalizeParagraphAlign(value: unknown): 'left' | 'center' | 'right' | 'justify' {
+  return value === 'left' || value === 'right' || value === 'justify' ? value : 'center';
+}
+
 function captionWordGroup(words: CaptionWord[], scene: Scene & typeof sceneDefaults, seconds: number, wordsPerGroup: number): {words: CaptionToken[]; activeIndex: number} {
   if (!words.length) return {words: [], activeIndex: -1};
+  const activeIndex = activeCaptionWordIndex(words, seconds);
+  const groupSize = Math.round(wordsPerGroup);
+  const groupStart = Math.floor(activeIndex / groupSize) * groupSize;
+  return {
+    activeIndex,
+    words: words.slice(groupStart, groupStart + groupSize).map((word, offset) => captionToken(word, groupStart + offset, activeIndex, seconds, scene)),
+  };
+}
+
+function captionSentenceGroup(words: CaptionWord[], scene: Scene & typeof sceneDefaults, seconds: number, sentencesPerGroup: number): {words: CaptionToken[]; activeIndex: number} {
+  if (!words.length) return {words: [], activeIndex: -1};
+  const activeIndex = activeCaptionWordIndex(words, seconds);
+  const groups = sentenceIndexGroups(words);
+  const foundSentenceIndex = groups.findIndex((indexes) => indexes.includes(activeIndex));
+  const activeSentenceIndex = foundSentenceIndex === -1 ? 0 : foundSentenceIndex;
+  const groupSize = Math.round(sentencesPerGroup);
+  const sentenceStart = Math.floor(activeSentenceIndex / groupSize) * groupSize;
+  const visibleIndexes = groups.slice(sentenceStart, sentenceStart + groupSize).flat();
+  return {
+    activeIndex,
+    words: visibleIndexes.map((index) => captionToken(words[index], index, activeIndex, seconds, scene)),
+  };
+}
+
+function sentenceIndexGroups(words: CaptionWord[]): number[][] {
+  const groups: number[][] = [];
+  let current: number[] = [];
+  words.forEach((word, index) => {
+    current.push(index);
+    if (/[.!?\u0964]$/.test(word.text) || current.length >= 18) {
+      groups.push(current);
+      current = [];
+    }
+  });
+  if (current.length) groups.push(current);
+  return groups;
+}
+
+function activeCaptionWordIndex(words: CaptionWord[], seconds: number): number {
   const foundIndex = words.findIndex((word, index) => {
     const nextStart = words[index + 1]?.start ?? word.end;
     return seconds >= word.start && seconds < Math.max(word.end, nextStart);
   });
-  const activeIndex = foundIndex === -1
+  return foundIndex === -1
     ? (seconds < words[0].start ? 0 : words.length - 1)
     : foundIndex;
-  const groupStart = Math.floor(activeIndex / wordsPerGroup) * wordsPerGroup;
+}
+
+function captionToken(word: CaptionWord, index: number, activeIndex: number, seconds: number, scene: Scene & typeof sceneDefaults): CaptionToken {
+  const length = Math.max(0.08, Number(word.end || 0) - Number(word.start || 0));
   return {
-    activeIndex,
-    words: words.slice(groupStart, groupStart + wordsPerGroup).map((word, offset) => {
-      const index = groupStart + offset;
-      const length = Math.max(0.08, Number(word.end || 0) - Number(word.start || 0));
-      return {
-        text: word.text,
-        index,
-        active: index === activeIndex,
-        past: index < activeIndex,
-        progress: Math.min(1, Math.max(0, (seconds - Number(word.start || scene.start || 0)) / length)),
-      };
-    }),
+    text: word.text,
+    index,
+    active: index === activeIndex,
+    past: index < activeIndex,
+    progress: Math.min(1, Math.max(0, (seconds - Number(word.start || scene.start || 0)) / length)),
   };
 }
 
@@ -645,7 +734,7 @@ function splitCaptionTokens(words: CaptionToken[]): CaptionToken[][] {
   return [words.slice(0, midpoint), words.slice(midpoint)];
 }
 
-function captionWordStyle(token: CaptionToken, style: NonNullable<Scene['captionStyle']>, highlightMode: CaptionHighlightMode): React.CSSProperties {
+function captionWordStyle(token: CaptionToken, style: NonNullable<Scene['captionStyle']>, highlightMode: CaptionHighlightMode, activeStyle: NonNullable<NonNullable<PreviewSettings['captions']>['activeStyle']>, activeColor: string): React.CSSProperties {
   const base: React.CSSProperties = {
     display: 'inline-block',
     borderRadius: '0.18em',
@@ -657,30 +746,50 @@ function captionWordStyle(token: CaptionToken, style: NonNullable<Scene['caption
   };
   if (highlightMode === 'none') return {...base, opacity: 1, transform: 'none'};
   if (highlightMode === 'trail' && token.past) return {...base, opacity: 1, color: '#06b6d4'};
-  if (highlightMode === 'trail' && token.active) return {...base, color: '#facc15', textShadow: '0 0 18px rgba(250,204,21,.28)'};
-  if (highlightMode === 'pulse' && token.active) return {...base, color: '#111827', background: '#facc15', boxShadow: '0 0 0 .13em rgba(250,204,21,.96), 0 12px 28px rgba(250,204,21,.24)'};
+  if (activeStyle === 'none' && token.active) return {...base, opacity: 1, transform: 'none'};
 
   if (token.active) {
-    if (style === 'glass-card') return {...base, color: '#67e8f9', textShadow: '0 0 20px rgba(103,232,249,.3)'};
-    if (style === 'bold-bottom') return {...base, color: '#fde68a', textShadow: '0 6px 30px rgba(0,0,0,.58), 0 0 22px rgba(253,230,138,.28)'};
-    if (style === 'editorial-card') return {...base, color: '#b45309'};
-    if (style === 'neon-ribbon') return {...base, color: '#fef08a', textShadow: '0 0 22px rgba(254,240,138,.35)'};
-    if (style === 'kinetic-stack') return {...base, color: '#06b6d4'};
-    if (style === 'minimal-subtitle') return {...base, color: '#facc15'};
-    if (style === 'device-callout') return {...base, color: '#2563eb'};
-    if (style === 'creator-pop') return {...base, color: '#facc15', transform: 'translateY(-0.03em) scale(1.12)'};
-    if (style === 'karaoke-card') return {...base, color: 'white', textShadow: '0 0 20px rgba(250,204,21,.42)'};
-    return {...base, color: '#0891b2'};
+    return activeWordStyle(base, activeStyle, activeColor, style);
   }
   if (style === 'karaoke-card' && token.past) return {...base, color: '#fde68a', opacity: 1};
   return base;
 }
 
-function captionLineStyle(style: NonNullable<Scene['captionStyle']>, index: number, fontSize: number, isLandscape: boolean): React.CSSProperties {
+function activeWordStyle(base: React.CSSProperties, activeStyle: NonNullable<NonNullable<PreviewSettings['captions']>['activeStyle']>, activeColor: string, style: NonNullable<Scene['captionStyle']>): React.CSSProperties {
+  const transform = style === 'creator-pop' ? 'translateY(-0.03em) scale(1.12)' : base.transform;
+  if (activeStyle === 'pill') return {...base, color: '#111827', background: activeColor, boxShadow: `0 0 0 .13em ${activeColor}, 0 12px 28px rgba(0,0,0,.22)`, transform};
+  if (activeStyle === 'underline') return {...base, color: activeColor, textDecoration: 'underline', textDecorationColor: activeColor, textDecorationThickness: '0.14em', textUnderlineOffset: '0.13em', transform};
+  if (activeStyle === 'glow') return {...base, color: activeColor, textShadow: `0 0 18px ${activeColor}, 0 0 34px rgba(255,255,255,.2)`, transform};
+  return {...base, color: activeColor, transform};
+}
+
+type CaptionTypography = {
+  paragraphAlign: 'left' | 'center' | 'right' | 'justify';
+  fontFamily?: string;
+  fontColor?: string;
+  fontWeight?: string;
+};
+
+function captionLineStyle(style: NonNullable<Scene['captionStyle']>, index: number, fontSize: number, isLandscape: boolean, typography: CaptionTypography): React.CSSProperties {
+  const justifyContent = typography.paragraphAlign === 'left'
+    ? 'flex-start'
+    : typography.paragraphAlign === 'right'
+      ? 'flex-end'
+      : typography.paragraphAlign === 'justify'
+        ? 'space-between'
+        : 'center';
+  const withTypography = (lineStyle: React.CSSProperties): React.CSSProperties => ({
+    ...lineStyle,
+    justifyContent,
+    textAlign: typography.paragraphAlign,
+    fontFamily: typography.fontFamily || lineStyle.fontFamily,
+    color: typography.fontColor || lineStyle.color,
+    fontWeight: typography.fontWeight || lineStyle.fontWeight,
+  });
   const base: React.CSSProperties = {
     display: 'inline-flex',
     alignItems: 'baseline',
-    justifyContent: 'center',
+    justifyContent,
     flexWrap: 'wrap',
     columnGap: '0.23em',
     rowGap: '0.08em',
@@ -696,33 +805,33 @@ function captionLineStyle(style: NonNullable<Scene['captionStyle']>, index: numb
     color: '#171717',
   };
   if (style === 'glass-card') {
-    return {...base, background: 'rgba(15,23,42,.58)', color: 'white', boxShadow: '0 16px 44px rgba(0,0,0,.22)', backdropFilter: 'blur(14px)'};
+    return withTypography({...base, background: 'rgba(15,23,42,.58)', color: 'white', boxShadow: '0 16px 44px rgba(0,0,0,.22)', backdropFilter: 'blur(14px)'});
   }
   if (style === 'bold-bottom') {
-    return {...base, background: 'transparent', color: 'white', fontWeight: 950, boxShadow: 'none', textShadow: '0 8px 34px rgba(0,0,0,.52)'};
+    return withTypography({...base, background: 'transparent', color: 'white', fontWeight: 950, boxShadow: 'none', textShadow: '0 8px 34px rgba(0,0,0,.52)'});
   }
   if (style === 'editorial-card') {
-    return {...base, borderRadius: 8, background: 'rgba(255,250,240,.96)', fontFamily: 'Georgia, Times New Roman, serif', boxShadow: '0 18px 44px rgba(43,29,14,.18)'};
+    return withTypography({...base, borderRadius: 8, background: 'rgba(255,250,240,.96)', fontFamily: 'Georgia, Times New Roman, serif', boxShadow: '0 18px 44px rgba(43,29,14,.18)'});
   }
   if (style === 'neon-ribbon') {
-    return {...base, borderRadius: 999, background: 'linear-gradient(135deg, rgba(8,13,20,.88), rgba(4,47,46,.84))', color: '#ecfeff', border: '1px solid rgba(94,234,212,.36)', boxShadow: '0 18px 46px rgba(13,148,136,.24)', textTransform: 'uppercase'};
+    return withTypography({...base, borderRadius: 999, background: 'linear-gradient(135deg, rgba(8,13,20,.88), rgba(4,47,46,.84))', color: '#ecfeff', border: '1px solid rgba(94,234,212,.36)', boxShadow: '0 18px 46px rgba(13,148,136,.24)', textTransform: 'uppercase'});
   }
   if (style === 'kinetic-stack') {
-    return {...base, borderRadius: 8, background: index % 2 ? '#111827' : '#f8fafc', color: index % 2 ? '#f8fafc' : '#0f172a', transform: `rotate(${index % 2 ? 1.2 : -1.5}deg)`, boxShadow: '0 18px 42px rgba(0,0,0,.22)'};
+    return withTypography({...base, borderRadius: 8, background: index % 2 ? '#111827' : '#f8fafc', color: index % 2 ? '#f8fafc' : '#0f172a', transform: `rotate(${index % 2 ? 1.2 : -1.5}deg)`, boxShadow: '0 18px 42px rgba(0,0,0,.22)'});
   }
   if (style === 'minimal-subtitle') {
-    return {...base, borderRadius: 0, background: 'rgba(0,0,0,.56)', color: 'white', boxShadow: 'none', fontWeight: 740, padding: isLandscape ? '7px 16px 9px' : '8px 18px 10px'};
+    return withTypography({...base, borderRadius: 0, background: 'rgba(0,0,0,.56)', color: 'white', boxShadow: 'none', fontWeight: 740, padding: isLandscape ? '7px 16px 9px' : '8px 18px 10px'});
   }
   if (style === 'device-callout') {
-    return {...base, position: 'relative', borderRadius: 14, background: 'linear-gradient(135deg, rgba(255,255,255,.97), rgba(219,234,254,.94))', color: '#0f172a', boxShadow: '0 16px 40px rgba(15,23,42,.22)'};
+    return withTypography({...base, position: 'relative', borderRadius: 14, background: 'linear-gradient(135deg, rgba(255,255,255,.97), rgba(219,234,254,.94))', color: '#0f172a', boxShadow: '0 16px 40px rgba(15,23,42,.22)'});
   }
   if (style === 'creator-pop') {
-    return {...base, background: 'transparent', color: 'white', boxShadow: 'none', fontWeight: 950, textTransform: 'uppercase', textShadow: '0 2px 0 #111827, 2px 0 0 #111827, -2px 0 0 #111827, 0 -2px 0 #111827, 0 10px 30px rgba(0,0,0,.52)'};
+    return withTypography({...base, background: 'transparent', color: 'white', boxShadow: 'none', fontWeight: 950, textTransform: 'uppercase', textShadow: '0 2px 0 #111827, 2px 0 0 #111827, -2px 0 0 #111827, 0 -2px 0 #111827, 0 10px 30px rgba(0,0,0,.52)'});
   }
   if (style === 'karaoke-card') {
-    return {...base, borderRadius: 12, background: 'linear-gradient(135deg, rgba(17,24,39,.82), rgba(49,46,129,.72))', color: 'rgba(255,255,255,.74)', border: '1px solid rgba(255,255,255,.16)', boxShadow: '0 18px 52px rgba(0,0,0,.32)'};
+    return withTypography({...base, borderRadius: 12, background: 'linear-gradient(135deg, rgba(17,24,39,.82), rgba(49,46,129,.72))', color: 'rgba(255,255,255,.74)', border: '1px solid rgba(255,255,255,.16)', boxShadow: '0 18px 52px rgba(0,0,0,.32)'});
   }
-  return base;
+  return withTypography(base);
 }
 
 const LifestyleDeviceStage: React.FC<{
@@ -743,6 +852,9 @@ const LifestyleDeviceStage: React.FC<{
   const pushIn = interpolate(intro, [0, 1], [0.9, 1]);
 
   if (scene.device === 'full-screen') {
+    if (!screenSrc && !deviceClips.length) {
+      return null;
+    }
     return (
       <AbsoluteFill style={{opacity: intro * transitionOpacity, background: '#020617'}}>
         <ScreenVideo
@@ -1125,7 +1237,11 @@ const ScreenVideo: React.FC<{screenSrc: string | null; radius: number; zoom?: nu
   };
 
   if (!screenSrc) {
-    return <div style={{position: 'relative', width: '100%', height: '100%', background: 'linear-gradient(135deg,#1e293b,#0f172a)', borderRadius: radius}} />;
+    return (
+      <div style={{position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: 'linear-gradient(135deg,#1e293b,#0f172a)', borderRadius: radius}}>
+        <TimelineClips clips={clips} mode="device-screen" fit={fit} radius={radius} zoom={zoom} />
+      </div>
+    );
   }
 
   // OffthreadVideo extracts exact frames during render, which avoids decoder flicker on transformed device screens.

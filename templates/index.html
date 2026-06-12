@@ -33,6 +33,23 @@
         </div>
 
         <form id="projectForm">
+          <section class="mode-panel" aria-label="Project type">
+            <label class="mode-option">
+              <input type="radio" name="projectType" value="screen-promo" checked />
+              <span>
+                <strong>Screen promo</strong>
+                <small>Use a screen recording with optional voiceover, captions, music, and scene direction.</small>
+              </span>
+            </label>
+            <label class="mode-option">
+              <input type="radio" name="projectType" value="audio-video" />
+              <span>
+                <strong>Audio-to-video</strong>
+                <small>Start from audio, generate captions, and place them over Promo Studio backgrounds.</small>
+              </span>
+            </label>
+          </section>
+
           <section class="form-card">
             <div class="form-card-head">
               <h3>Identity</h3>
@@ -92,12 +109,12 @@
           </div>
 
           <section class="upload-row">
-            <label class="upload-box">
-              <span>Screen recording video</span>
+            <label id="screenUploadBox" class="upload-box">
+              <span id="screenUploadLabel">Screen recording video</span>
               <input name="screenRecording" type="file" accept="video/mp4,video/webm,video/quicktime,video/x-matroska" required />
             </label>
-            <label class="upload-box muted">
-              <span>Optional voiceover</span>
+            <label id="voiceoverUploadBox" class="upload-box muted">
+              <span id="voiceoverUploadLabel">Optional voiceover</span>
               <input id="voiceoverInput" name="voiceover" type="file" accept="audio/*" />
             </label>
             <label class="upload-box muted">

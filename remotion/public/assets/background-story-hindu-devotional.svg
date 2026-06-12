@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" role="img" aria-label="Hindu devotional temple background">
+  <defs>
+    <linearGradient id="dawn" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4c1d95"/>
+      <stop offset=".45" stop-color="#be123c"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+    <radialGradient id="lamp" cx="50%" cy="52%" r="42%">
+      <stop offset="0" stop-color="#fff7ed" stop-opacity=".8"/>
+      <stop offset=".42" stop-color="#facc15" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#facc15" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#dawn)"/>
+  <circle cx="960" cy="520" r="520" fill="url(#lamp)"/>
+  <path d="M676 776V450h568v326z" fill="#451a03" opacity=".72"/>
+  <path d="M610 450h700L960 188z" fill="#78350f" opacity=".82"/>
+  <path d="M760 450h400L960 292z" fill="#fbbf24" opacity=".26"/>
+  <rect x="822" y="550" width="276" height="226" rx="138" fill="#1f2937" opacity=".76"/>
+  <rect x="520" y="776" width="880" height="70" rx="12" fill="#78350f"/>
+  <rect x="430" y="846" width="1060" height="86" rx="18" fill="#451a03"/>
+  <g fill="#fde68a" opacity=".84">
+    <path d="M412 848c0-35 30-64 66-64s66 29 66 64z"/>
+    <path d="M1376 848c0-35 30-64 66-64s66 29 66 64z"/>
+    <ellipse cx="478" cy="862" rx="54" ry="14"/>
+    <ellipse cx="1442" cy="862" rx="54" ry="14"/>
+  </g>
+  <g fill="#fff7ed" opacity=".38">
+    <circle cx="370" cy="270" r="5"/>
+    <circle cx="1490" cy="238" r="7"/>
+    <circle cx="1260" cy="150" r="4"/>
+    <circle cx="640" cy="178" r="6"/>
+  </g>
+</svg>

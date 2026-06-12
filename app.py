@@ -80,6 +80,18 @@ CAPTION_STYLE_PRESETS = [
     "karaoke-card",
 ]
 
+CAPTION_FONT_PRESETS = {
+    "",
+    "Inter",
+    "Arial",
+    "Georgia",
+    "Merriweather",
+    "Verdana",
+    "Trebuchet MS",
+    "Tahoma",
+    "Comic Sans MS",
+}
+
 BACKGROUND_PRESETS = [
     "reading-room",
     "office-desk",
@@ -91,6 +103,11 @@ BACKGROUND_PRESETS = [
     "evening-desk",
     "kitchen-counter",
     "creator-studio",
+    "story-kids",
+    "story-inspirational",
+    "story-hindu-devotional",
+    "story-talk",
+    "story-scary",
 ]
 
 app = Flask(__name__)
@@ -235,6 +252,12 @@ def child_path(root: Path, *parts: str) -> Path:
 def normalize_project(project: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(project)
     normalized_assets = dict(normalized.get("assets", {})) if isinstance(normalized.get("assets"), dict) else {}
+    stored_project_type = normalized.get("projectType")
+    normalized["projectType"] = (
+        stored_project_type
+        if stored_project_type in {"screen-promo", "audio-video"}
+        else ("audio-video" if normalized_assets.get("voiceover") and not normalized_assets.get("screen") else "screen-promo")
+    )
     screen_info = screen_asset_info(normalized_assets)
     if screen_info:
         normalized_assets.setdefault("screenDurationSeconds", screen_info.get("duration"))
@@ -252,7 +275,11 @@ def normalize_project(project: dict[str, Any]) -> dict[str, Any]:
     scenes = normalized.get("scenes", [])
     if isinstance(scenes, list):
         normalized["scenes"] = [
-            with_scene_design(scene, index) if isinstance(scene, dict) else scene
+            (
+                normalize_audio_video_scene(scene, index, bool(normalized_assets.get("screen")))
+                if normalized["projectType"] == "audio-video"
+                else with_scene_design(scene, index)
+            ) if isinstance(scene, dict) else scene
             for index, scene in enumerate(scenes)
         ]
     if normalized.get("template") in {None, "tablet", "laptop", "phone"}:
@@ -268,6 +295,18 @@ def normalize_project(project: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def normalize_audio_video_scene(scene: dict[str, Any], index: int, has_screen: bool) -> dict[str, Any]:
+    designed = with_scene_design(scene, index)
+    if has_screen:
+        return designed
+    return {
+        **designed,
+        "device": "full-screen",
+        "captionPosition": designed.get("captionPosition") if designed.get("captionPosition") not in {"device", "auto"} else "center",
+        "captionStyle": designed.get("captionStyle") or "karaoke-card",
+    }
+
+
 def normalize_preview_settings(settings: Any) -> dict[str, Any]:
     data = settings if isinstance(settings, dict) else {}
     captions = data.get("captions") if isinstance(data.get("captions"), dict) else {}
@@ -276,6 +315,14 @@ def normalize_preview_settings(settings: Any) -> dict[str, Any]:
         words_per_group = int(float(captions.get("wordsPerGroup", 3)))
     except (TypeError, ValueError):
         words_per_group = 3
+    try:
+        sentences_per_group = int(float(captions.get("sentencesPerGroup", 1)))
+    except (TypeError, ValueError):
+        sentences_per_group = 1
+    try:
+        font_size_percent = int(float(captions.get("fontSizePercent", 100)))
+    except (TypeError, ValueError):
+        font_size_percent = 100
     try:
         playback_rate = float(data.get("playbackRate", 1))
     except (TypeError, ValueError):
@@ -299,14 +346,32 @@ def normalize_preview_settings(settings: Any) -> dict[str, Any]:
     position = str(captions.get("position") or "")
     size = str(captions.get("size") or "")
     highlight_mode = str(captions.get("highlightMode") or "word")
+    group_mode = str(captions.get("groupMode") or "words")
+    box_mode = str(captions.get("boxMode") or "single")
+    paragraph_align = str(captions.get("paragraphAlign") or "center")
+    font_family = str(captions.get("fontFamily") or "")
+    font_weight = str(captions.get("fontWeight") or "")
+    font_color = normalize_hex_color(captions.get("fontColor"))
+    active_style = str(captions.get("activeStyle") or "color")
+    active_color = normalize_hex_color(captions.get("activeColor")) or "#facc15"
 
     return {
         "captions": {
             "style": style if style in CAPTION_STYLE_PRESETS else "",
             "position": position if position in {"", "auto", "top", "center", "bottom", "device"} else "",
+            "groupMode": group_mode if group_mode in {"words", "sentences"} else "words",
             "wordsPerGroup": min(8, max(1, words_per_group)),
+            "sentencesPerGroup": min(4, max(1, sentences_per_group)),
             "highlightMode": highlight_mode if highlight_mode in {"word", "trail", "pulse", "none"} else "word",
             "size": size if size in {"", "compact", "standard", "large", "hero"} else "",
+            "boxMode": box_mode if box_mode in {"single", "lines"} else "single",
+            "paragraphAlign": paragraph_align if paragraph_align in {"left", "center", "right", "justify"} else "center",
+            "fontFamily": font_family if font_family in CAPTION_FONT_PRESETS else "",
+            "fontColor": font_color,
+            "fontSizePercent": min(180, max(70, font_size_percent)),
+            "fontWeight": font_weight if font_weight in {"", "500", "650", "800", "950"} else "",
+            "activeStyle": active_style if active_style in {"color", "pill", "underline", "glow", "none"} else "color",
+            "activeColor": active_color,
         },
         "audio": {
             "voiceoverEnabled": bool(audio.get("voiceoverEnabled", True)),
@@ -317,6 +382,13 @@ def normalize_preview_settings(settings: Any) -> dict[str, Any]:
         },
         "playbackRate": min(1.5, max(0.75, playback_rate)),
     }
+
+
+def normalize_hex_color(value: Any) -> str:
+    color = str(value or "").strip()
+    if re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+        return color.lower()
+    return ""
 
 
 def ensure_render_state(project: dict[str, Any]) -> dict[str, Any]:
@@ -953,6 +1025,7 @@ def list_projects():
                 "id": data.get("id"),
                 "title": data.get("title"),
                 "productName": data.get("productName"),
+                "projectType": data.get("projectType", "screen-promo"),
                 "format": data.get("format"),
                 "template": data.get("template"),
                 "status": data.get("status", "draft"),
@@ -972,6 +1045,9 @@ def create_project():
         product_name = request.form.get("productName", title).strip() or title
         target_url = request.form.get("targetUrl", "").strip()
         cta = request.form.get("cta", "Try it free").strip() or "Try it free"
+        project_type = request.form.get("projectType", "screen-promo")
+        if project_type not in {"screen-promo", "audio-video"}:
+            project_type = "screen-promo"
         video_format = request.form.get("format", "vertical")
         template_name = request.form.get("template", "lifestyle")
         requested_duration_seconds = bounded_duration(float(request.form.get("durationSeconds", "30") or "30"))
@@ -995,8 +1071,11 @@ def create_project():
                 {"start": 24, "end": 30, "caption": cta, "narration": cta},
             ]
         screen_recording = request.files.get("screenRecording")
-        if not screen_recording or not screen_recording.filename:
+        voiceover_upload = request.files.get("voiceover")
+        if project_type == "screen-promo" and (not screen_recording or not screen_recording.filename):
             return jsonify({"error": "Please upload a screen recording video."}), 400
+        if project_type == "audio-video" and (not voiceover_upload or not voiceover_upload.filename):
+            return jsonify({"error": "Please upload an audio track for audio-to-video projects."}), 400
 
         project_id = f"{now_id()}_{slugify(title)[:60] or 'promo'}"
         project_dir = PROJECTS_DIR / project_id
@@ -1006,12 +1085,17 @@ def create_project():
 
         screen_filename = save_upload(screen_recording, public_dir, "screen", ALLOWED_VIDEO_EXTENSIONS)
         screen_info = probe_media_info(public_dir / screen_filename) if screen_filename else None
-        voiceover_filename = save_upload(request.files.get("voiceover"), public_dir, "voiceover", ALLOWED_AUDIO_EXTENSIONS)
+        voiceover_filename = save_upload(voiceover_upload, public_dir, "voiceover", ALLOWED_AUDIO_EXTENSIONS)
         voiceover_duration = probe_media_duration(public_dir / voiceover_filename) if voiceover_filename else None
         if voiceover_duration:
             duration_seconds = bounded_duration(voiceover_duration)
         scenes = ensure_scene_coverage(scenes, duration_seconds, product_name, cta)
-        scenes = [with_scene_design(scene, index) for index, scene in enumerate(scenes)]
+        scenes = [
+            normalize_audio_video_scene(scene, index, bool(screen_filename))
+            if project_type == "audio-video"
+            else with_scene_design(scene, index)
+            for index, scene in enumerate(scenes)
+        ]
         background_music_filename = save_upload(request.files.get("backgroundMusic"), public_dir, "background-music", ALLOWED_AUDIO_EXTENSIONS)
         logo_filename = save_upload(request.files.get("logo"), public_dir, "logo", ALLOWED_IMAGE_EXTENSIONS)
         thumbnail_filename = save_upload(request.files.get("thumbnailImage"), public_dir, "thumbnail", ALLOWED_IMAGE_EXTENSIONS)
@@ -1054,9 +1138,12 @@ def create_project():
                 })
         duration_seconds = bounded_duration(max(duration_seconds, scene_end_seconds(scenes), clip_end_seconds(clips)))
         scenes = ensure_scene_coverage(scenes, duration_seconds, product_name, cta)
+        if project_type == "audio-video":
+            scenes = [normalize_audio_video_scene(scene, index, bool(screen_filename)) for index, scene in enumerate(scenes)]
 
         project: dict[str, Any] = {
             "id": project_id,
+            "projectType": project_type,
             "title": title,
             "productName": product_name,
             "targetUrl": target_url,
@@ -1068,7 +1155,7 @@ def create_project():
             "status": "draft",
             "createdAt": datetime.now().isoformat(timespec="seconds"),
             "assets": {
-                "screen": f"projects/{project_id}/{screen_filename}",
+                "screen": f"projects/{project_id}/{screen_filename}" if screen_filename else None,
                 "screenDurationSeconds": screen_info.get("duration") if screen_info else None,
                 "screenWidth": screen_info.get("width") if screen_info else None,
                 "screenHeight": screen_info.get("height") if screen_info else None,
@@ -1230,6 +1317,11 @@ def render_project(project_id: str):
     props_path = PROJECTS_DIR / project_id / "remotion-props.json"
     log_path = PROJECTS_DIR / project_id / "render.log"
     render = ensure_render_state(project)
+    assets = project.get("assets", {}) if isinstance(project.get("assets"), dict) else {}
+    screen_asset = assets.get("screen")
+    screen_duration = assets.get("screenDurationSeconds")
+    if screen_asset and not screen_duration:
+        screen_duration = probe_media_duration(REMOTION_PUBLIC_DIR / str(screen_asset))
 
     props = {
         "title": project.get("title"),
@@ -1240,12 +1332,12 @@ def render_project(project_id: str):
         "template": project.get("template"),
         "durationSeconds": project.get("durationSeconds", 30),
         "fps": project.get("fps", 30),
-        "screenAsset": project.get("assets", {}).get("screen"),
-        "screenDurationSeconds": project.get("assets", {}).get("screenDurationSeconds") or probe_media_duration(REMOTION_PUBLIC_DIR / str(project.get("assets", {}).get("screen", ""))),
-        "voiceoverAsset": project.get("assets", {}).get("voiceover"),
-        "backgroundMusicAsset": project.get("assets", {}).get("backgroundMusic"),
-        "logoAsset": project.get("assets", {}).get("logo"),
-        "thumbnailAsset": project.get("assets", {}).get("thumbnail"),
+        "screenAsset": screen_asset,
+        "screenDurationSeconds": screen_duration,
+        "voiceoverAsset": assets.get("voiceover"),
+        "backgroundMusicAsset": assets.get("backgroundMusic"),
+        "logoAsset": assets.get("logo"),
+        "thumbnailAsset": assets.get("thumbnail"),
         "thumbnailBumper": project.get("thumbnailBumper"),
         "layout": project.get("layout"),
         "scenes": project.get("scenes", []),

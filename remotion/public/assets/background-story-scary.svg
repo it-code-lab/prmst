@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" role="img" aria-label="Scary story forest background">
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#020617"/>
+      <stop offset=".55" stop-color="#1e1b4b"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <radialGradient id="moon" cx="68%" cy="22%" r="18%">
+      <stop offset="0" stop-color="#e0f2fe"/>
+      <stop offset=".46" stop-color="#bae6fd" stop-opacity=".58"/>
+      <stop offset="1" stop-color="#bae6fd" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#night)"/>
+  <circle cx="1300" cy="220" r="230" fill="url(#moon)"/>
+  <circle cx="1260" cy="188" r="88" fill="#020617" opacity=".35"/>
+  <path d="M0 792c240-104 424-112 622-38 216 82 430 84 650 10 220-74 422-56 648 78v238H0z" fill="#020617"/>
+  <g fill="#020617">
+    <path d="M120 812 210 300l92 512z"/>
+    <path d="M330 838 450 210l118 628z"/>
+    <path d="M1520 830 1624 252l112 578z"/>
+    <path d="M1210 840 1310 340l88 500z"/>
+    <path d="M690 828 790 260l116 568z"/>
+  </g>
+  <g stroke="#020617" stroke-width="24" stroke-linecap="round" opacity=".9">
+    <path d="M450 390c-80 60-150 74-240 60"/>
+    <path d="M790 390c82 56 160 72 252 48"/>
+    <path d="M1320 470c86-54 166-68 252-36"/>
+    <path d="M1626 390c-72 50-144 66-220 48"/>
+  </g>
+  <path d="M0 936c310-50 590-48 840 8 290 64 620 52 1080-36v172H0z" fill="#09090b" opacity=".86"/>
+</svg>

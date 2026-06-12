@@ -39,7 +39,14 @@
         </select>
       </label>
       <label>
-        Words
+        Display
+        <select id="previewCaptionGroupMode">
+          <option value="words">Words</option>
+          <option value="sentences">Sentences</option>
+        </select>
+      </label>
+      <label>
+        <span id="previewCaptionCountLabel">Words</span>
         <input id="previewWordsPerGroup" type="range" min="1" max="8" step="1" value="3" />
         <strong id="previewWordsValue">3</strong>
       </label>
@@ -64,6 +71,71 @@
       </label>
       <button id="resetCaptionPreviewBtn" type="button">Reset</button>
       <span id="captionTimingBadge" class="caption-timing-badge">Timing: estimated</span>
+    </section>
+    <section class="caption-controls caption-advanced-controls" aria-label="Caption typography controls">
+      <label>
+        Font
+        <select id="previewCaptionFont">
+          <option value="">Scene default</option>
+          <option value="Inter">Inter</option>
+          <option value="Arial">Arial</option>
+          <option value="Georgia">Georgia</option>
+          <option value="Merriweather">Merriweather</option>
+          <option value="Verdana">Verdana</option>
+          <option value="Trebuchet MS">Trebuchet</option>
+          <option value="Tahoma">Tahoma</option>
+          <option value="Comic Sans MS">Comic Sans</option>
+        </select>
+      </label>
+      <label>
+        Text color
+        <input id="previewCaptionFontColor" type="color" value="#ffffff" />
+      </label>
+      <label>
+        Font scale
+        <input id="previewCaptionFontSize" type="range" min="70" max="180" step="5" value="100" />
+        <strong id="previewCaptionFontSizeValue">100%</strong>
+      </label>
+      <label>
+        Weight
+        <select id="previewCaptionWeight">
+          <option value="">Scene default</option>
+          <option value="500">Medium</option>
+          <option value="650">Semibold</option>
+          <option value="800">Bold</option>
+          <option value="950">Black</option>
+        </select>
+      </label>
+      <label>
+        Box
+        <select id="previewCaptionBoxMode">
+          <option value="single">Single box</option>
+          <option value="lines">Per line</option>
+        </select>
+      </label>
+      <label>
+        Paragraph
+        <select id="previewCaptionParagraphAlign">
+          <option value="center">Centered</option>
+          <option value="left">Left</option>
+          <option value="justify">Justified</option>
+          <option value="right">Right</option>
+        </select>
+      </label>
+      <label>
+        Active word
+        <select id="previewCaptionActiveStyle">
+          <option value="color">Color</option>
+          <option value="pill">Pill</option>
+          <option value="underline">Underline</option>
+          <option value="glow">Glow</option>
+          <option value="none">None</option>
+        </select>
+      </label>
+      <label>
+        Active color
+        <input id="previewCaptionActiveColor" type="color" value="#facc15" />
+      </label>
     </section>
     <section class="audio-controls" aria-label="Preview audio controls">
       <label>

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" role="img" aria-label="Inspirational sunrise background">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#164e63"/>
+      <stop offset=".45" stop-color="#38bdf8"/>
+      <stop offset=".72" stop-color="#fde68a"/>
+      <stop offset="1" stop-color="#fb923c"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="50%" cy="58%" r="34%">
+      <stop offset="0" stop-color="#fff7ed"/>
+      <stop offset=".35" stop-color="#fde68a" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#fde68a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <circle cx="960" cy="620" r="430" fill="url(#sun)"/>
+  <path d="M0 780c210-96 360-110 570-12 176 82 336 68 500-18 220-116 442-108 850 74v256H0z" fill="#064e3b" opacity=".72"/>
+  <path d="M0 884c278-92 524-74 738 54 160 96 342 96 566 0 206-88 392-80 616 44v98H0z" fill="#052e2b"/>
+  <path d="M0 716c250 44 470 58 682 42 210-16 410-66 596-56 214 12 414 82 642 78" fill="none" stroke="#fff7ed" stroke-width="8" opacity=".28"/>
+  <g fill="#fff7ed" opacity=".28">
+    <circle cx="322" cy="220" r="6"/>
+    <circle cx="1568" cy="210" r="5"/>
+    <circle cx="1280" cy="320" r="7"/>
+    <circle cx="650" cy="340" r="4"/>
+  </g>
+</svg>

@@ -28,6 +28,12 @@ const thumbnailPasteHint = document.querySelector('#thumbnailPasteHint');
 const thumbnailBumperPosition = document.querySelector('#thumbnailBumperPosition');
 const layoutDeviceLiftInput = document.querySelector('[name="layoutDeviceLift"]');
 const layoutCtaLiftInput = document.querySelector('[name="layoutCtaLift"]');
+const projectTypeInputs = [...document.querySelectorAll('[name="projectType"]')];
+const screenRecordingInput = projectForm?.elements.screenRecording;
+const screenUploadBox = document.querySelector('#screenUploadBox');
+const screenUploadLabel = document.querySelector('#screenUploadLabel');
+const voiceoverUploadBox = document.querySelector('#voiceoverUploadBox');
+const voiceoverUploadLabel = document.querySelector('#voiceoverUploadLabel');
 
 const BACKGROUND_PRESETS = [
   { id: 'reading-room', label: 'Reading room', thumb: '/preview-assets/assets/lifestyle-reading-room.png' },
@@ -40,6 +46,11 @@ const BACKGROUND_PRESETS = [
   { id: 'evening-desk', label: 'Evening desk', thumb: '/preview-assets/assets/background-evening-desk.png' },
   { id: 'kitchen-counter', label: 'Kitchen counter', thumb: '/preview-assets/assets/background-kitchen-counter.png' },
   { id: 'creator-studio', label: 'Creator studio', thumb: '/preview-assets/assets/background-creator-studio.png' },
+  { id: 'story-kids', label: 'Kids story', thumb: '/preview-assets/assets/background-story-kids.svg' },
+  { id: 'story-inspirational', label: 'Inspirational', thumb: '/preview-assets/assets/background-story-inspirational.svg' },
+  { id: 'story-hindu-devotional', label: 'Hindu devotional', thumb: '/preview-assets/assets/background-story-hindu-devotional.svg' },
+  { id: 'story-talk', label: 'Talk / podcast', thumb: '/preview-assets/assets/background-story-talk.svg' },
+  { id: 'story-scary', label: 'Scary story', thumb: '/preview-assets/assets/background-story-scary.svg' },
 ];
 
 const DEVICE_PRESETS = [
@@ -160,6 +171,7 @@ let dragClipId = '';
 let thumbnailClipboardFile = null;
 let thumbnailPreviewUrl = '';
 let thumbnailPositionTouched = false;
+let currentProjectType = 'screen-promo';
 
 function showMessage(text, type = '') {
   message.textContent = text;
@@ -255,6 +267,57 @@ function applyStudioTheme(theme) {
     themeToggleBtn.textContent = isLight ? 'Dark mode' : 'Light mode';
     themeToggleBtn.setAttribute('aria-pressed', String(isLight));
   }
+}
+
+function selectedProjectType() {
+  return projectTypeInputs.find((input) => input.checked)?.value === 'audio-video'
+    ? 'audio-video'
+    : 'screen-promo';
+}
+
+function setRadioValue(root, selector, value) {
+  root.querySelectorAll(selector).forEach((control) => {
+    control.checked = control.value === value;
+  });
+}
+
+function applyProjectTypeMode(options = {}) {
+  const previousType = currentProjectType;
+  currentProjectType = selectedProjectType();
+  const isAudioVideo = currentProjectType === 'audio-video';
+  document.body.dataset.projectType = currentProjectType;
+
+  if (screenRecordingInput) {
+    screenRecordingInput.required = !isAudioVideo;
+  }
+  if (screenUploadLabel) {
+    screenUploadLabel.textContent = isAudioVideo ? 'Optional screen or b-roll video' : 'Screen recording video';
+  }
+  if (voiceoverUploadLabel) {
+    voiceoverUploadLabel.textContent = isAudioVideo ? 'Audio track' : 'Optional voiceover';
+  }
+  screenUploadBox?.classList.toggle('muted', isAudioVideo);
+  voiceoverUploadBox?.classList.toggle('muted', !isAudioVideo);
+
+  if (isAudioVideo && previousType !== 'audio-video' && !options.initial) {
+    setRadioValue(document, '.global-device', 'full-screen');
+    if (globalCaptionPosition) globalCaptionPosition.value = 'center';
+    sceneDesignRows().forEach((row) => {
+      const visualOverride = row.querySelector('.scene-visual-override');
+      if (visualOverride) visualOverride.checked = false;
+      updateSceneOverrideState(row);
+    });
+    syncSceneControlsWithGlobals();
+    saveStudioGlobalSettings();
+    showMessage('Audio-to-video mode is ready. Add audio, generate captions, then pick a background and caption style.', 'success');
+  }
+}
+
+function initProjectTypeControls() {
+  projectTypeInputs.forEach((input) => {
+    input.addEventListener('change', () => applyProjectTypeMode());
+  });
+  applyProjectTypeMode({ initial: true });
 }
 
 function globalVisualDesign({ fallback = false } = {}) {
@@ -1221,6 +1284,7 @@ async function loadProjects() {
         <span class="badge">${escapeHtml(statusLabel)}</span>
       </div>
       <div class="project-meta">
+        <span class="badge muted-badge">${project.projectType === 'audio-video' ? 'Audio-to-video' : 'Screen promo'}</span>
         <span class="badge muted-badge">${escapeHtml(project.format || '')}</span>
         <span class="badge muted-badge">${escapeHtml(created)}</span>
       </div>
@@ -1331,6 +1395,17 @@ projectForm.addEventListener('submit', async (event) => {
     showMessage('Please add at least one scene with valid start/end times.', 'error');
     return;
   }
+  const projectType = selectedProjectType();
+  const voiceoverFile = document.querySelector('#voiceoverInput')?.files?.[0];
+  const screenFile = screenRecordingInput?.files?.[0];
+  if (projectType === 'audio-video' && !voiceoverFile) {
+    showMessage('Choose an audio track before saving an audio-to-video project.', 'error');
+    return;
+  }
+  if (projectType === 'screen-promo' && !screenFile) {
+    showMessage('Choose a screen recording video before saving a screen promo project.', 'error');
+    return;
+  }
   const clips = collectClips();
   const formData = new FormData(projectForm);
   if (thumbnailClipboardFile) {
@@ -1371,6 +1446,7 @@ initStudioTheme();
 initThumbnailBumperControls();
 initGlobalVisualControls();
 initGlobalCaptionControls();
+initProjectTypeControls();
 initScenePacingControls();
 initLayoutLiftControls();
 loadSampleScenes();

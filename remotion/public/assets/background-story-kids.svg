@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" role="img" aria-label="Kids story room background">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7dd3fc"/>
+      <stop offset="0.52" stop-color="#fef3c7"/>
+      <stop offset="1" stop-color="#fda4af"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="34%" r="48%">
+      <stop offset="0" stop-color="#fff7ed" stop-opacity=".88"/>
+      <stop offset="1" stop-color="#fff7ed" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#wall)"/>
+  <rect y="760" width="1920" height="320" fill="#38bdf8" opacity=".2"/>
+  <circle cx="960" cy="360" r="520" fill="url(#glow)"/>
+  <g opacity=".78">
+    <rect x="116" y="180" width="360" height="520" rx="28" fill="#134e4a"/>
+    <rect x="144" y="230" width="304" height="34" rx="10" fill="#fde68a"/>
+    <rect x="144" y="310" width="304" height="34" rx="10" fill="#fca5a5"/>
+    <rect x="144" y="390" width="304" height="34" rx="10" fill="#93c5fd"/>
+    <rect x="144" y="470" width="304" height="34" rx="10" fill="#86efac"/>
+    <rect x="144" y="550" width="304" height="34" rx="10" fill="#c4b5fd"/>
+  </g>
+  <g opacity=".72">
+    <rect x="1444" y="190" width="340" height="500" rx="28" fill="#7c2d12"/>
+    <rect x="1472" y="240" width="284" height="32" rx="10" fill="#fef08a"/>
+    <rect x="1472" y="318" width="284" height="32" rx="10" fill="#fdba74"/>
+    <rect x="1472" y="396" width="284" height="32" rx="10" fill="#a7f3d0"/>
+    <rect x="1472" y="474" width="284" height="32" rx="10" fill="#bfdbfe"/>
+    <rect x="1472" y="552" width="284" height="32" rx="10" fill="#fecdd3"/>
+  </g>
+  <ellipse cx="960" cy="885" rx="620" ry="112" fill="#0f172a" opacity=".16"/>
+  <path d="M680 742c120-54 238-54 354 0v150c-116-54-234-54-354 0z" fill="#fff7ed"/>
+  <path d="M1034 742c116-54 234-54 354 0v150c-120-54-238-54-354 0z" fill="#ffedd5"/>
+  <path d="M680 742c120 46 238 46 354 0v150c-116 46-234 46-354 0z" fill="#fef3c7" opacity=".7"/>
+  <path d="M1034 742c116 46 234 46 354 0v150c-120 46-238 46-354 0z" fill="#fde68a" opacity=".55"/>
+  <g fill="#fff7ed" opacity=".8">
+    <circle cx="725" cy="230" r="9"/>
+    <circle cx="1240" cy="188" r="7"/>
+    <circle cx="1328" cy="352" r="10"/>
+    <circle cx="590" cy="398" r="8"/>
+    <circle cx="1116" cy="520" r="6"/>
+  </g>
+</svg>

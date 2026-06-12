@@ -24,10 +24,21 @@ const sceneCamera = document.querySelector('.scene-camera');
 const tabletStage = document.querySelector('.tablet-stage');
 const captionStyleTray = document.querySelector('#captionStyleTray');
 const captionPositionSelect = document.querySelector('#previewCaptionPosition');
+const captionGroupModeSelect = document.querySelector('#previewCaptionGroupMode');
 const captionWordsInput = document.querySelector('#previewWordsPerGroup');
 const captionWordsValue = document.querySelector('#previewWordsValue');
+const captionCountLabel = document.querySelector('#previewCaptionCountLabel');
 const captionHighlightSelect = document.querySelector('#previewHighlightMode');
 const captionSizeSelect = document.querySelector('#previewCaptionSize');
+const captionFontSelect = document.querySelector('#previewCaptionFont');
+const captionFontColorInput = document.querySelector('#previewCaptionFontColor');
+const captionFontSizeInput = document.querySelector('#previewCaptionFontSize');
+const captionFontSizeValue = document.querySelector('#previewCaptionFontSizeValue');
+const captionWeightSelect = document.querySelector('#previewCaptionWeight');
+const captionBoxModeSelect = document.querySelector('#previewCaptionBoxMode');
+const captionParagraphAlignSelect = document.querySelector('#previewCaptionParagraphAlign');
+const captionActiveStyleSelect = document.querySelector('#previewCaptionActiveStyle');
+const captionActiveColorInput = document.querySelector('#previewCaptionActiveColor');
 const resetCaptionPreviewBtn = document.querySelector('#resetCaptionPreviewBtn');
 const captionTimingBadge = document.querySelector('#captionTimingBadge');
 const voiceoverAudio = document.querySelector('#voiceoverAudio');
@@ -59,6 +70,11 @@ const BACKGROUNDS = {
   'evening-desk': 'assets/background-evening-desk.png',
   'kitchen-counter': 'assets/background-kitchen-counter.png',
   'creator-studio': 'assets/background-creator-studio.png',
+  'story-kids': 'assets/background-story-kids.svg',
+  'story-inspirational': 'assets/background-story-inspirational.svg',
+  'story-hindu-devotional': 'assets/background-story-hindu-devotional.svg',
+  'story-talk': 'assets/background-story-talk.svg',
+  'story-scary': 'assets/background-story-scary.svg',
 };
 const DEFAULT_SCENE = {
   background: 'reading-room',
@@ -87,6 +103,16 @@ const CAPTION_STYLE_PRESETS = [
   { id: 'creator-pop', label: 'Creator pop', sample: 'Viral' },
   { id: 'karaoke-card', label: 'Karaoke card', sample: 'Karaoke' },
 ];
+const CAPTION_FONT_STACKS = {
+  Inter: 'Inter, Arial, sans-serif',
+  Arial: 'Arial, Helvetica, sans-serif',
+  Georgia: 'Georgia, "Times New Roman", serif',
+  Merriweather: 'Merriweather, Georgia, serif',
+  Verdana: 'Verdana, Geneva, sans-serif',
+  'Trebuchet MS': '"Trebuchet MS", Arial, sans-serif',
+  Tahoma: 'Tahoma, Geneva, sans-serif',
+  'Comic Sans MS': '"Comic Sans MS", "Comic Sans", cursive',
+};
 const scenes = Array.isArray(project.scenes) ? project.scenes : [];
 const clips = Array.isArray(project.clips) ? project.clips : [];
 const duration = Math.max(5, Number(project.durationSeconds || 30));
@@ -243,12 +269,14 @@ function cleanWord(word) {
 }
 
 function setCaption(caption, scene, seconds, words = []) {
-  const group = captionWordGroup(words, scene, seconds);
+  const group = captionGroup(words, scene, seconds);
+  const boxMode = previewCaptionSettings.boxMode === 'lines' ? 'lines' : 'single';
+  const fallbackLines = String(caption || project.title || '').split(/\n+/).filter(Boolean).map((line) => line.split(/\s+/).filter(Boolean));
   const lines = group.words.length
-    ? splitCaptionWords(group.words)
-    : String(caption || project.title || '').split(/\n+/).filter(Boolean).map((line) => line.split(/\s+/).filter(Boolean));
+    ? (boxMode === 'lines' ? splitCaptionWords(group.words) : [group.words])
+    : (boxMode === 'lines' ? fallbackLines : [fallbackLines.flat()]);
   const groupKey = `${scene?.start || 0}|${group.words.map((word) => word.text).join(' ')}`;
-  const renderKey = `${groupKey}|${group.activeIndex}|${previewCaptionSettings.highlightMode}|${stage.dataset.captionStyle}|${stage.dataset.captionPosition}|${stage.dataset.captionSize}`;
+  const renderKey = `${groupKey}|${group.activeIndex}|${previewCaptionSettings.groupMode}|${previewCaptionSettings.wordsPerGroup}|${previewCaptionSettings.sentencesPerGroup}|${previewCaptionSettings.highlightMode}|${previewCaptionSettings.boxMode}|${previewCaptionSettings.paragraphAlign}|${previewCaptionSettings.fontFamily}|${previewCaptionSettings.fontColor}|${previewCaptionSettings.fontSizePercent}|${previewCaptionSettings.fontWeight}|${previewCaptionSettings.activeStyle}|${previewCaptionSettings.activeColor}|${stage.dataset.captionStyle}|${stage.dataset.captionPosition}|${stage.dataset.captionSize}`;
 
   if (lastCaptionRenderKey === renderKey) return;
   lastCaptionRenderKey = renderKey;
@@ -282,22 +310,90 @@ function setCaption(caption, scene, seconds, words = []) {
   });
 }
 
-function captionWordGroup(words, scene, seconds) {
+function captionGroup(words, scene, seconds) {
   const timedWords = words.length ? words : sceneWords(scene || {});
-  if (!timedWords.length) return { words: [], activeIndex: -1 };
-  const foundIndex = timedWords.findIndex((word, index) => {
-    const nextStart = timedWords[index + 1]?.start ?? word.end;
-    return seconds >= word.start && seconds < Math.max(word.end, nextStart);
-  });
-  const activeIndex = foundIndex === -1
-    ? (seconds < timedWords[0].start ? 0 : timedWords.length - 1)
-    : foundIndex;
-  const wordsPerGroup = Number(previewCaptionSettings.wordsPerGroup || 3);
+  return previewCaptionSettings.groupMode === 'sentences'
+    ? captionSentenceGroup(timedWords, scene, seconds)
+    : captionWordGroup(timedWords, scene, seconds);
+}
+
+function captionWordGroup(words, scene, seconds) {
+  if (!words.length) return { words: [], activeIndex: -1 };
+  const activeIndex = activeCaptionWordIndex(words, seconds);
+  const wordsPerGroup = clampCaptionCount(previewCaptionSettings.wordsPerGroup, 1, 8, 3);
   const groupStart = Math.floor(activeIndex / wordsPerGroup) * wordsPerGroup;
   return {
-    words: timedWords.slice(groupStart, groupStart + wordsPerGroup).map((word, offset) => ({ ...word, index: groupStart + offset })),
+    words: words.slice(groupStart, groupStart + wordsPerGroup).map((word, offset) => captionToken(word, groupStart + offset, activeIndex, seconds)),
     activeIndex,
   };
+}
+
+function captionSentenceGroup(words, scene, seconds) {
+  if (!words.length) return { words: [], activeIndex: -1 };
+  const activeIndex = activeCaptionWordIndex(words, seconds);
+  const groups = sentenceIndexGroups(words);
+  const activeSentenceIndex = Math.max(0, groups.findIndex((indexes) => indexes.includes(activeIndex)));
+  const sentencesPerGroup = clampCaptionCount(previewCaptionSettings.sentencesPerGroup, 1, 4, 1);
+  const sentenceStart = Math.floor(activeSentenceIndex / sentencesPerGroup) * sentencesPerGroup;
+  const visibleIndexes = groups.slice(sentenceStart, sentenceStart + sentencesPerGroup).flat();
+  return {
+    words: visibleIndexes.map((index) => captionToken(words[index], index, activeIndex, seconds)),
+    activeIndex,
+  };
+}
+
+function sentenceIndexGroups(words) {
+  const groups = [];
+  let current = [];
+  words.forEach((word, index) => {
+    current.push(index);
+    if (/[.!?\u0964]$/.test(word.text) || current.length >= 18) {
+      groups.push(current);
+      current = [];
+    }
+  });
+  if (current.length) groups.push(current);
+  return groups;
+}
+
+function activeCaptionWordIndex(words, seconds) {
+  const foundIndex = words.findIndex((word, index) => {
+    const nextStart = words[index + 1]?.start ?? word.end;
+    return seconds >= word.start && seconds < Math.max(word.end, nextStart);
+  });
+  return foundIndex === -1
+    ? (seconds < words[0].start ? 0 : words.length - 1)
+    : foundIndex;
+}
+
+function captionToken(word, index, activeIndex, seconds) {
+  return {
+    ...word,
+    index,
+    active: index === activeIndex,
+    past: index < activeIndex,
+    progress: wordProgress(word, seconds),
+  };
+}
+
+function clampCaptionCount(value, min, max, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, Math.round(number))) : fallback;
+}
+
+function safeHexColor(value, fallback) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
+}
+
+function previewCaptionFontSizePx(captionSize) {
+  const base = {
+    compact: 19,
+    standard: 24,
+    large: 31,
+    hero: 42,
+  }[captionSize || 'standard'] || 24;
+  return Math.round(base * (clampCaptionCount(previewCaptionSettings.fontSizePercent, 70, 180, 100) / 100));
 }
 
 function splitCaptionWords(words) {
@@ -319,6 +415,7 @@ function updatePreview() {
   const scene = entry.scene;
   applySceneDesign(scene);
   const activeDeviceClip = activeClip('device-screen', contentSeconds);
+  updateDeviceStageVisibility(scene, activeDeviceClip);
   updateDeviceClipSource(activeDeviceClip, contentSeconds);
   updateTimelineClips(contentSeconds);
   drawDeviceScreen(activeDeviceClip);
@@ -353,8 +450,18 @@ function applySceneDesign(scene) {
     'none',
     captionSize,
     scene.captionAccent,
+    previewCaptionSettings.groupMode,
     previewCaptionSettings.wordsPerGroup,
+    previewCaptionSettings.sentencesPerGroup,
     previewCaptionSettings.highlightMode,
+    previewCaptionSettings.boxMode,
+    previewCaptionSettings.paragraphAlign,
+    previewCaptionSettings.fontFamily,
+    previewCaptionSettings.fontColor,
+    previewCaptionSettings.fontSizePercent,
+    previewCaptionSettings.fontWeight,
+    previewCaptionSettings.activeStyle,
+    previewCaptionSettings.activeColor,
   ].join('|');
 
   if (activeSceneKey !== sceneKey) {
@@ -367,6 +474,15 @@ function applySceneDesign(scene) {
     stage.dataset.captionSize = captionSize;
     stage.dataset.captionAccent = scene.captionAccent || DEFAULT_SCENE.captionAccent;
     stage.dataset.highlightMode = previewCaptionSettings.highlightMode || 'word';
+    stage.dataset.captionBoxMode = previewCaptionSettings.boxMode === 'lines' ? 'lines' : 'single';
+    stage.dataset.paragraphAlign = ['left', 'center', 'right', 'justify'].includes(previewCaptionSettings.paragraphAlign) ? previewCaptionSettings.paragraphAlign : 'center';
+    stage.dataset.activeWordStyle = previewCaptionSettings.activeStyle || 'color';
+    stage.dataset.captionColor = previewCaptionSettings.fontColor ? 'custom' : 'scene';
+    captionChip.style.setProperty('--caption-user-font', CAPTION_FONT_STACKS[previewCaptionSettings.fontFamily] || 'inherit');
+    captionChip.style.setProperty('--caption-user-color', safeHexColor(previewCaptionSettings.fontColor, '#ffffff'));
+    captionChip.style.setProperty('--caption-active-color', safeHexColor(previewCaptionSettings.activeColor, '#facc15'));
+    captionChip.style.setProperty('--caption-font', `${previewCaptionFontSizePx(captionSize)}px`);
+    captionChip.style.setProperty('--caption-user-weight', previewCaptionSettings.fontWeight || '850');
     sceneCamera.dataset.motion = scene.motion || DEFAULT_SCENE.motion;
     tabletStage.dataset.device = scene.device || DEFAULT_SCENE.device;
     tabletStage.dataset.angle = scene.angle || DEFAULT_SCENE.angle;
@@ -386,6 +502,11 @@ function updateTimelineClips(seconds) {
   showTimelineClip(backgroundClipVideo, activeClip('background', seconds), seconds);
   showTimelineClip(fullClipVideo, activeClip('full-screen', seconds), seconds);
   showTimelineClip(overlayClipVideo, activeClip('overlay', seconds), seconds);
+}
+
+function updateDeviceStageVisibility(scene, activeDeviceClip) {
+  const hideDevice = scene?.device === 'full-screen' && !project.assets?.screen && !activeDeviceClip;
+  tabletStage?.classList.toggle('hidden', hideDevice);
 }
 
 function activeClip(mode, seconds) {
@@ -450,7 +571,6 @@ function syncClipVideo(video, clip, seconds) {
 function drawDeviceScreen(activeDeviceClip) {
   if (!screenCanvas || !screenCtx) return;
   const source = activeDeviceClip && deviceClipVideo?.readyState >= 2 ? deviceClipVideo : screenVideo;
-  if (!source || source.readyState < 2 || !source.videoWidth || !source.videoHeight) return;
 
   const cssWidth = screenCanvas.clientWidth || 1;
   const cssHeight = screenCanvas.clientHeight || 1;
@@ -464,6 +584,11 @@ function drawDeviceScreen(activeDeviceClip) {
 
   screenCtx.save();
   screenCtx.setTransform(1, 0, 0, 1, 0, 0);
+  if (!source || source.readyState < 2 || !source.videoWidth || !source.videoHeight) {
+    drawFallbackScreen(width, height);
+    screenCtx.restore();
+    return;
+  }
   screenCtx.fillStyle = '#f8fafc';
   screenCtx.fillRect(0, 0, width, height);
 
@@ -477,6 +602,14 @@ function drawDeviceScreen(activeDeviceClip) {
   const y = (height - drawHeight) / 2;
   screenCtx.drawImage(source, x, y, drawWidth, drawHeight);
   screenCtx.restore();
+}
+
+function drawFallbackScreen(width, height) {
+  const gradient = screenCtx.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, '#1e293b');
+  gradient.addColorStop(1, '#0f172a');
+  screenCtx.fillStyle = gradient;
+  screenCtx.fillRect(0, 0, width, height);
 }
 
 function setTimingBadge(source) {
@@ -947,9 +1080,19 @@ function loadPreviewCaptionSettings() {
   const defaults = {
     style: '',
     position: '',
+    groupMode: 'words',
     wordsPerGroup: 3,
+    sentencesPerGroup: 1,
     highlightMode: 'word',
     size: '',
+    boxMode: 'single',
+    paragraphAlign: 'center',
+    fontFamily: '',
+    fontColor: '',
+    fontSizePercent: 100,
+    fontWeight: '',
+    activeStyle: 'color',
+    activeColor: '#facc15',
   };
   const projectSettings = project.previewSettings?.captions || {};
   try {
@@ -966,10 +1109,29 @@ function savePreviewCaptionSettings() {
 
 function syncCaptionControls() {
   if (captionPositionSelect) captionPositionSelect.value = previewCaptionSettings.position || '';
-  if (captionWordsInput) captionWordsInput.value = String(previewCaptionSettings.wordsPerGroup || 3);
-  if (captionWordsValue) captionWordsValue.textContent = String(previewCaptionSettings.wordsPerGroup || 3);
+  const groupMode = previewCaptionSettings.groupMode === 'sentences' ? 'sentences' : 'words';
+  const count = groupMode === 'sentences'
+    ? clampCaptionCount(previewCaptionSettings.sentencesPerGroup, 1, 4, 1)
+    : clampCaptionCount(previewCaptionSettings.wordsPerGroup, 1, 8, 3);
+  if (captionGroupModeSelect) captionGroupModeSelect.value = groupMode;
+  if (captionCountLabel) captionCountLabel.textContent = groupMode === 'sentences' ? 'Sentences' : 'Words';
+  if (captionWordsInput) {
+    captionWordsInput.min = '1';
+    captionWordsInput.max = groupMode === 'sentences' ? '4' : '8';
+    captionWordsInput.value = String(count);
+  }
+  if (captionWordsValue) captionWordsValue.textContent = String(count);
   if (captionHighlightSelect) captionHighlightSelect.value = previewCaptionSettings.highlightMode || 'word';
   if (captionSizeSelect) captionSizeSelect.value = previewCaptionSettings.size || '';
+  if (captionFontSelect) captionFontSelect.value = previewCaptionSettings.fontFamily || '';
+  if (captionFontColorInput) captionFontColorInput.value = safeHexColor(previewCaptionSettings.fontColor, '#ffffff');
+  if (captionFontSizeInput) captionFontSizeInput.value = String(clampCaptionCount(previewCaptionSettings.fontSizePercent, 70, 180, 100));
+  if (captionFontSizeValue) captionFontSizeValue.textContent = `${clampCaptionCount(previewCaptionSettings.fontSizePercent, 70, 180, 100)}%`;
+  if (captionWeightSelect) captionWeightSelect.value = previewCaptionSettings.fontWeight || '';
+  if (captionBoxModeSelect) captionBoxModeSelect.value = previewCaptionSettings.boxMode === 'lines' ? 'lines' : 'single';
+  if (captionParagraphAlignSelect) captionParagraphAlignSelect.value = ['left', 'center', 'right', 'justify'].includes(previewCaptionSettings.paragraphAlign) ? previewCaptionSettings.paragraphAlign : 'center';
+  if (captionActiveStyleSelect) captionActiveStyleSelect.value = previewCaptionSettings.activeStyle || 'color';
+  if (captionActiveColorInput) captionActiveColorInput.value = safeHexColor(previewCaptionSettings.activeColor, '#facc15');
 }
 
 function wireCaptionControls() {
@@ -980,10 +1142,25 @@ function wireCaptionControls() {
     activeSceneKey = '';
     updatePreview();
   });
-  captionWordsInput?.addEventListener('input', () => {
-    previewCaptionSettings.wordsPerGroup = Number(captionWordsInput.value || 3);
-    if (captionWordsValue) captionWordsValue.textContent = String(previewCaptionSettings.wordsPerGroup);
+  captionGroupModeSelect?.addEventListener('change', () => {
+    previewCaptionSettings.groupMode = captionGroupModeSelect.value === 'sentences' ? 'sentences' : 'words';
     savePreviewCaptionSettings();
+    syncCaptionControls();
+    activeCaptionGroupKey = '';
+    lastCaptionRenderKey = '';
+    updatePreview();
+  });
+  captionWordsInput?.addEventListener('input', () => {
+    if (previewCaptionSettings.groupMode === 'sentences') {
+      previewCaptionSettings.sentencesPerGroup = clampCaptionCount(captionWordsInput.value, 1, 4, 1);
+      if (captionWordsValue) captionWordsValue.textContent = String(previewCaptionSettings.sentencesPerGroup);
+    } else {
+      previewCaptionSettings.wordsPerGroup = clampCaptionCount(captionWordsInput.value, 1, 8, 3);
+      if (captionWordsValue) captionWordsValue.textContent = String(previewCaptionSettings.wordsPerGroup);
+    }
+    savePreviewCaptionSettings();
+    activeCaptionGroupKey = '';
+    lastCaptionRenderKey = '';
     updatePreview();
   });
   captionHighlightSelect?.addEventListener('change', () => {
@@ -998,13 +1175,74 @@ function wireCaptionControls() {
     activeSceneKey = '';
     updatePreview();
   });
+  captionFontSelect?.addEventListener('change', () => {
+    previewCaptionSettings.fontFamily = captionFontSelect.value;
+    savePreviewCaptionSettings();
+    activeSceneKey = '';
+    updatePreview();
+  });
+  captionFontColorInput?.addEventListener('input', () => {
+    previewCaptionSettings.fontColor = safeHexColor(captionFontColorInput.value, '');
+    savePreviewCaptionSettings();
+    activeSceneKey = '';
+    updatePreview();
+  });
+  captionFontSizeInput?.addEventListener('input', () => {
+    previewCaptionSettings.fontSizePercent = clampCaptionCount(captionFontSizeInput.value, 70, 180, 100);
+    if (captionFontSizeValue) captionFontSizeValue.textContent = `${previewCaptionSettings.fontSizePercent}%`;
+    savePreviewCaptionSettings();
+    activeSceneKey = '';
+    updatePreview();
+  });
+  captionWeightSelect?.addEventListener('change', () => {
+    previewCaptionSettings.fontWeight = captionWeightSelect.value;
+    savePreviewCaptionSettings();
+    activeSceneKey = '';
+    updatePreview();
+  });
+  captionBoxModeSelect?.addEventListener('change', () => {
+    previewCaptionSettings.boxMode = captionBoxModeSelect.value === 'lines' ? 'lines' : 'single';
+    savePreviewCaptionSettings();
+    activeCaptionGroupKey = '';
+    lastCaptionRenderKey = '';
+    activeSceneKey = '';
+    updatePreview();
+  });
+  captionParagraphAlignSelect?.addEventListener('change', () => {
+    previewCaptionSettings.paragraphAlign = captionParagraphAlignSelect.value;
+    savePreviewCaptionSettings();
+    activeSceneKey = '';
+    updatePreview();
+  });
+  captionActiveStyleSelect?.addEventListener('change', () => {
+    previewCaptionSettings.activeStyle = captionActiveStyleSelect.value || 'color';
+    savePreviewCaptionSettings();
+    activeSceneKey = '';
+    updatePreview();
+  });
+  captionActiveColorInput?.addEventListener('input', () => {
+    previewCaptionSettings.activeColor = safeHexColor(captionActiveColorInput.value, '#facc15');
+    savePreviewCaptionSettings();
+    activeSceneKey = '';
+    updatePreview();
+  });
   resetCaptionPreviewBtn?.addEventListener('click', () => {
     previewCaptionSettings = {
       style: '',
       position: '',
+      groupMode: 'words',
       wordsPerGroup: 3,
+      sentencesPerGroup: 1,
       highlightMode: 'word',
       size: '',
+      boxMode: 'single',
+      paragraphAlign: 'center',
+      fontFamily: '',
+      fontColor: '',
+      fontSizePercent: 100,
+      fontWeight: '',
+      activeStyle: 'color',
+      activeColor: '#facc15',
     };
     savePreviewCaptionSettings();
     syncCaptionControls();

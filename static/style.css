@@ -61,6 +61,12 @@ h1 { margin: 0; font-size: clamp(28px, 3.3vw, 44px); line-height: 1; letter-spac
 .panel-title > span { color: var(--primary); font-size: 12px; font-weight: 900; border: 1px solid rgba(45,212,191,.34); padding: 7px 10px; border-radius: 999px; background: rgba(45,212,191,.08); }
 .panel-title.small { margin-top: 26px; }
 form { display: grid; gap: 16px; }
+.mode-panel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; border: 1px solid rgba(148,163,184,.14); border-radius: 10px; background: rgba(255,255,255,.02); }
+.mode-option { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; min-height: 88px; padding: 13px; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(255,255,255,.035); cursor: pointer; }
+.mode-option input { width: auto; margin-top: 3px; accent-color: var(--primary); }
+.mode-option strong { display: block; color: var(--text); font-size: 14px; margin-bottom: 4px; }
+.mode-option small { display: block; color: var(--muted); font-size: 12px; line-height: 1.38; font-weight: 650; }
+.mode-option:has(input:checked) { border-color: rgba(6,182,212,.9); box-shadow: 0 0 0 3px rgba(6,182,212,.14); background: rgba(45,212,191,.08); }
 .form-card { display: grid; gap: 15px; padding: 16px; border: 1px solid rgba(148,163,184,.14); border-radius: 10px; background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.018)); }
 .form-card-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .form-card-head h3 { margin: 0; font-size: 15px; }
@@ -285,6 +291,7 @@ body[data-theme="light"] textarea {
 }
 
 body[data-theme="light"] .form-card,
+body[data-theme="light"] .mode-panel,
 body[data-theme="light"] .upload-row,
 body[data-theme="light"] .global-caption-panel,
 body[data-theme="light"] .pacing-panel,
@@ -315,7 +322,8 @@ body[data-theme="light"] .scene-main.selected-row {
 
 body[data-theme="light"] .thumb-option,
 body[data-theme="light"] .device-option,
-body[data-theme="light"] .caption-style-option {
+body[data-theme="light"] .caption-style-option,
+body[data-theme="light"] .mode-option {
   background: #f8fbfd;
   color: #172536;
 }
@@ -365,7 +373,7 @@ body[data-theme="light"] .delete {
 @media (max-width: 980px) {
   .studio-header, .grid { grid-template-columns: 1fr; }
   .studio-status { justify-content: flex-start; }
-  .upload-row, .thumbnail-bumper-panel, .thumbnail-settings-grid, .layout-lift-panel, .two-col, .four-col { grid-template-columns: 1fr; }
+  .mode-panel, .upload-row, .thumbnail-bumper-panel, .thumbnail-settings-grid, .layout-lift-panel, .two-col, .four-col { grid-template-columns: 1fr; }
   .pacing-panel { grid-template-columns: 1fr; }
   .helper-panel { flex-direction: column; align-items: stretch; }
   .global-caption-panel, .global-caption-fields, .global-visual-grid { grid-template-columns: 1fr; }

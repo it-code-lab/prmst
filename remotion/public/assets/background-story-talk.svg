@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" role="img" aria-label="Talk show studio background">
+  <defs>
+    <linearGradient id="studio" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset=".48" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#1e293b"/>
+    </linearGradient>
+    <radialGradient id="spot" cx="50%" cy="28%" r="52%">
+      <stop offset="0" stop-color="#67e8f9" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#67e8f9" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#studio)"/>
+  <circle cx="960" cy="300" r="590" fill="url(#spot)"/>
+  <path d="M0 724h1920v356H0z" fill="#020617" opacity=".42"/>
+  <ellipse cx="960" cy="782" rx="520" ry="96" fill="#14b8a6" opacity=".16"/>
+  <rect x="610" y="578" width="700" height="216" rx="108" fill="#0f172a" opacity=".74"/>
+  <circle cx="790" cy="684" r="72" fill="#64748b"/>
+  <circle cx="1130" cy="684" r="72" fill="#64748b"/>
+  <rect x="924" y="510" width="72" height="232" rx="36" fill="#e2e8f0"/>
+  <rect x="870" y="430" width="180" height="150" rx="75" fill="#f8fafc"/>
+  <rect x="902" y="462" width="116" height="86" rx="43" fill="#111827"/>
+  <path d="M310 306h320M1290 306h320M220 420h280M1420 420h280" stroke="#a7f3d0" stroke-width="7" stroke-linecap="round" opacity=".35"/>
+</svg>
