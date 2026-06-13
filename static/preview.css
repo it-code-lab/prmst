@@ -1565,3 +1565,138 @@ body.clean .preview-stage.square {
     justify-content: center;
   }
 }
+
+/* Premium preview refresh */
+:root {
+  --text: #f7f4ee;
+  --muted: #a9afa8;
+  --line: rgba(219, 214, 204, .16);
+  --preview-surface: #171b19;
+  --preview-surface-2: #202520;
+  --preview-primary: #2f9f90;
+  --preview-accent: #c99a42;
+}
+
+body.preview-page {
+  background: linear-gradient(180deg, #111513, #0d100f);
+  color: var(--text);
+}
+
+.preview-shell {
+  width: min(1500px, calc(100% - 40px));
+  padding-top: 16px;
+}
+
+.preview-toolbar {
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--preview-surface) 92%, transparent);
+  box-shadow: 0 18px 46px rgba(0,0,0,.22);
+}
+
+.preview-toolbar h1 {
+  font-size: 20px;
+  line-height: 1.12;
+}
+
+.preview-toolbar p {
+  color: var(--muted);
+}
+
+.toolbar-link,
+.preview-toolbar button,
+.caption-controls button,
+.preview-transport button,
+.preview-transport select {
+  border-radius: 8px;
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--preview-surface-2) 82%, transparent);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.toolbar-link:hover,
+.preview-toolbar button:hover,
+.caption-controls button:hover,
+.preview-transport button:hover {
+  border-color: color-mix(in srgb, var(--preview-primary) 34%, var(--line));
+  background: color-mix(in srgb, var(--preview-primary) 8%, var(--preview-surface-2));
+}
+
+.render-status[data-tone="working"] { color: #7cc7df; }
+.render-status[data-tone="success"] { color: #62d6bd; }
+.render-status[data-tone="error"] { color: #f0a3a3; }
+
+.caption-style-tray,
+.caption-controls,
+.audio-controls,
+.preview-transport {
+  border-radius: 8px;
+}
+
+.caption-style-tray {
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.caption-style-pick {
+  border-radius: 8px;
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--preview-surface-2) 76%, transparent);
+  color: var(--text);
+}
+
+.caption-style-pick.active {
+  border-color: color-mix(in srgb, var(--preview-primary) 80%, white 8%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--preview-primary) 16%, transparent);
+}
+
+.caption-controls,
+.audio-controls,
+.preview-transport {
+  background: color-mix(in srgb, var(--preview-surface) 88%, transparent);
+  border-color: var(--line);
+  box-shadow: 0 10px 28px rgba(0,0,0,.14);
+}
+
+.caption-controls label,
+.audio-controls label,
+.preview-transport label {
+  color: color-mix(in srgb, var(--text) 74%, var(--muted));
+}
+
+.caption-controls select,
+.caption-controls input,
+.audio-controls input,
+.preview-transport select {
+  border-radius: 8px;
+  border-color: var(--line);
+  background: color-mix(in srgb, #0c100e 82%, transparent);
+  color: var(--text);
+}
+
+.caption-controls input:focus,
+.caption-controls select:focus,
+.audio-controls input:focus,
+.preview-transport select:focus {
+  border-color: color-mix(in srgb, var(--preview-primary) 72%, white 10%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--preview-primary) 16%, transparent);
+}
+
+.caption-timing-badge,
+.shortcut-strip span {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--preview-surface-2) 72%, transparent);
+  color: var(--muted);
+}
+
+.preview-stage {
+  box-shadow: 0 24px 70px rgba(0,0,0,.26);
+}
+
+.shortcut-strip {
+  opacity: .9;
+}

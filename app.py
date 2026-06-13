@@ -121,6 +121,10 @@ CAPTION_FONT_PRESETS = {
     "Trebuchet MS",
     "Tahoma",
     "Comic Sans MS",
+    "Hindi Kids",
+    "Hindi Story",
+    "Hindi Devotional",
+    "Hindi Scary",
 }
 
 BACKGROUND_PRESETS = [
@@ -815,6 +819,46 @@ def probe_media_info(path: Path) -> dict[str, Any] | None:
         }
     except Exception:
         return None
+
+
+def caption_audio_preprocess_filter() -> str:
+    return ",".join([
+        "pan=mono|c0=0.5*c0+0.5*c1",
+        "highpass=f=120",
+        "lowpass=f=7600",
+        "afftdn=nf=-25",
+        "dynaudnorm=f=150:g=15",
+        "loudnorm=I=-18:TP=-1.5:LRA=11",
+    ])
+
+
+def prepare_caption_audio(input_path: Path, temp_dir: Path) -> Path:
+    ffmpeg = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+    output_path = temp_dir / f"{input_path.stem}_speech.wav"
+    proc = subprocess.run(
+        [
+            ffmpeg,
+            "-y",
+            "-i",
+            str(input_path),
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-af",
+            caption_audio_preprocess_filter(),
+            str(output_path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if proc.returncode != 0 or not output_path.exists() or output_path.stat().st_size <= 0:
+        details = (proc.stderr or proc.stdout or "").strip().splitlines()
+        reason = details[-1] if details else "FFmpeg could not create speech-focused audio."
+        raise RuntimeError(f"Could not reduce music before caption generation: {reason}")
+    return output_path
 
 
 def with_scene_design(scene: dict[str, Any], index: int) -> dict[str, Any]:
@@ -1701,24 +1745,33 @@ def transcribe_voiceover():
     language = normalize_transcription_language(request.form.get("transcriptionLanguage"))
     original_script = normalize_original_script(request.form.get("originalScript"))
     use_whisperx_alignment = truthy_form_value(request.form.get("useWhisperxAlignment"), True)
+    reduce_music_for_captions = truthy_form_value(request.form.get("reduceMusicForCaptions"), False)
 
     temp_dir = PROJECTS_DIR / "_transcription_uploads"
     temp_dir.mkdir(parents=True, exist_ok=True)
     suffix = file_ext(audio.filename)
     temp_path = temp_dir / f"{now_id()}_{secure_filename(audio.filename) or 'voiceover'}.{suffix}"
     audio.save(temp_path)
+    cleanup_paths = [temp_path]
 
     try:
         duration_seconds = probe_media_duration(temp_path) or requested_duration_seconds
         duration_seconds = min(MAX_PROJECT_DURATION_SECONDS, max(5, float(duration_seconds)))
         min_scene_seconds, target_scene_seconds, max_scene_seconds = parse_scene_pacing(request.form)
+        transcription_audio_path = temp_path
+        warnings: list[str] = []
+        if reduce_music_for_captions:
+            try:
+                transcription_audio_path = prepare_caption_audio(temp_path, temp_dir)
+                cleanup_paths.append(transcription_audio_path)
+            except RuntimeError as exc:
+                warnings.append(f"{exc} Used the original audio for captions instead.")
         if original_script:
-            warning = None
             transcript_source = "script"
             if use_whisperx_alignment:
                 try:
                     scenes = align_script_with_whisperx(
-                        temp_path,
+                        transcription_audio_path,
                         original_script,
                         duration_seconds,
                         min_scene_seconds,
@@ -1735,7 +1788,7 @@ def transcribe_voiceover():
                         target_scene_seconds,
                         max_scene_seconds,
                     )
-                    warning = f"{exc} Used estimated script timing instead."
+                    warnings.append(f"{exc} Used estimated script timing instead.")
             else:
                 scenes = script_to_scenes(
                     original_script,
@@ -1746,31 +1799,35 @@ def transcribe_voiceover():
                 )
         else:
             scenes = transcribe_audio_to_scenes(
-                temp_path,
+                transcription_audio_path,
                 duration_seconds,
                 min_scene_seconds,
                 target_scene_seconds,
                 max_scene_seconds,
                 language,
             )
-            warning = transcription_script_warning(scenes, language)
+            script_warning = transcription_script_warning(scenes, language)
+            if script_warning:
+                warnings.append(script_warning)
             transcript_source = "voiceover"
         return jsonify({
             "scenes": scenes,
             "durationSeconds": round(duration_seconds, 2),
             "transcriptionLanguage": language or "auto",
             "transcriptSource": transcript_source,
-            "warning": warning,
+            "audioPreprocessed": reduce_music_for_captions and transcription_audio_path != temp_path,
+            "warning": "\n\n".join(warnings) if warnings else None,
         })
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 501
     except Exception as exc:
         return jsonify({"error": f"Could not transcribe audio: {exc}"}), 500
     finally:
-        try:
-            temp_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+        for path in cleanup_paths:
+            try:
+                path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 @app.delete("/api/projects/<project_id>")

@@ -112,6 +112,10 @@ const CAPTION_FONT_STACKS = {
   'Trebuchet MS': '"Trebuchet MS", Arial, sans-serif',
   Tahoma: 'Tahoma, Geneva, sans-serif',
   'Comic Sans MS': '"Comic Sans MS", "Comic Sans", cursive',
+  'Hindi Kids': '"Baloo 2", "Noto Sans Devanagari", "Nirmala UI", Mangal, sans-serif',
+  'Hindi Story': '"Noto Serif Devanagari", Kokila, Mangal, "Nirmala UI", serif',
+  'Hindi Devotional': '"Tiro Devanagari Hindi", "Noto Serif Devanagari", Kokila, Mangal, serif',
+  'Hindi Scary': 'Kalam, "Noto Sans Devanagari", "Nirmala UI", Mangal, cursive',
 };
 const CAPTION_WORD_MAX = 8;
 const CAPTION_SENTENCE_MAX = 12;

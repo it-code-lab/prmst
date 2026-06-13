@@ -111,7 +111,7 @@ type PreviewSettings = {
     size?: Scene['captionSize'] | '';
     boxMode?: 'single' | 'lines';
     paragraphAlign?: 'left' | 'center' | 'right' | 'justify';
-    fontFamily?: '' | 'Inter' | 'Arial' | 'Georgia' | 'Merriweather' | 'Verdana' | 'Trebuchet MS' | 'Tahoma' | 'Comic Sans MS';
+    fontFamily?: '' | 'Inter' | 'Arial' | 'Georgia' | 'Merriweather' | 'Verdana' | 'Trebuchet MS' | 'Tahoma' | 'Comic Sans MS' | 'Hindi Kids' | 'Hindi Story' | 'Hindi Devotional' | 'Hindi Scary';
     fontColor?: string;
     fontSizePercent?: number;
     fontWeight?: '' | '500' | '650' | '800' | '950';
@@ -270,6 +270,10 @@ const captionFontStacks: Record<string, string> = {
   'Trebuchet MS': 'Trebuchet MS, Arial, sans-serif',
   Tahoma: 'Tahoma, Geneva, sans-serif',
   'Comic Sans MS': 'Comic Sans MS, Comic Sans, cursive',
+  'Hindi Kids': '"Baloo 2", "Noto Sans Devanagari", "Nirmala UI", Mangal, sans-serif',
+  'Hindi Story': '"Noto Serif Devanagari", Kokila, Mangal, "Nirmala UI", serif',
+  'Hindi Devotional': '"Tiro Devanagari Hindi", "Noto Serif Devanagari", Kokila, Mangal, serif',
+  'Hindi Scary': 'Kalam, "Noto Sans Devanagari", "Nirmala UI", Mangal, cursive',
 };
 const CAPTION_WORD_MAX = 8;
 const CAPTION_SENTENCE_MAX = 12;

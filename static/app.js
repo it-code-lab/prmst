@@ -40,6 +40,7 @@ const transcribeVoiceoverBtn = document.querySelector('#transcribeVoiceoverBtn')
 const transcriptionLanguage = document.querySelector('#transcriptionLanguage');
 const originalScriptInput = document.querySelector('#originalScriptInput');
 const useWhisperxAlignmentInput = document.querySelector('#useWhisperxAlignment');
+const reduceMusicForCaptionsInput = document.querySelector('#reduceMusicForCaptions');
 const screenUploadBox = document.querySelector('#screenUploadBox');
 const screenUploadLabel = document.querySelector('#screenUploadLabel');
 const voiceoverUploadBox = document.querySelector('#voiceoverUploadBox');
@@ -256,11 +257,11 @@ function updateThumbnailPreview(file, statusText) {
 }
 
 function initStudioTheme() {
-  let savedTheme = 'dark';
+  let savedTheme = 'light';
   try {
-    savedTheme = localStorage.getItem(STUDIO_THEME_KEY) || 'dark';
+    savedTheme = localStorage.getItem(STUDIO_THEME_KEY) || 'light';
   } catch {
-    savedTheme = 'dark';
+    savedTheme = 'light';
   }
   applyStudioTheme(savedTheme === 'light' ? 'light' : 'dark');
   themeToggleBtn?.addEventListener('click', () => {
@@ -1274,8 +1275,8 @@ async function generateScenesFromVoiceover(button) {
   const hasOriginalScript = Boolean(normalizeWhitespace(originalScriptInput?.value || ''));
   showMessage(
     hasOriginalScript
-      ? 'Aligning the original script to the audio for word-level caption timing.'
-      : 'Transcribing voiceover. The first run can take a while if the local model needs to load.',
+      ? `${reduceMusicForCaptionsInput?.checked ? 'Preparing speech-focused audio, then a' : 'A'}ligning the original script for word-level caption timing.`
+      : `${reduceMusicForCaptionsInput?.checked ? 'Preparing speech-focused audio, then t' : 'T'}ranscribing voiceover. The first run can take a while if the local model needs to load.`,
     '',
   );
   try {
@@ -1285,6 +1286,7 @@ async function generateScenesFromVoiceover(button) {
     formData.set('transcriptionLanguage', transcriptionLanguage?.value || 'auto');
     formData.set('originalScript', originalScriptInput?.value || '');
     formData.set('useWhisperxAlignment', useWhisperxAlignmentInput?.checked ? '1' : '0');
+    formData.set('reduceMusicForCaptions', reduceMusicForCaptionsInput?.checked ? '1' : '0');
     const pacing = scenePacingConfig();
     formData.set('minSceneSeconds', pacing.minSeconds);
     formData.set('targetSceneSeconds', pacing.targetSeconds);
@@ -1309,7 +1311,8 @@ async function generateScenesFromVoiceover(button) {
       : data.transcriptSource === 'script'
         ? ' from the original script'
         : ' from voiceover';
-    showMessage(`Generated ${data.scenes.length} caption scenes${sourceText}.${warning}`, data.warning ? '' : 'success');
+    const audioText = data.audioPreprocessed ? ' Music reduction was applied before caption generation.' : '';
+    showMessage(`Generated ${data.scenes.length} caption scenes${sourceText}.${audioText}${warning}`, data.warning ? '' : 'success');
   } catch (err) {
     showMessage(String(err.message || err), 'error');
   } finally {
