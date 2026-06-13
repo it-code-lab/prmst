@@ -30,6 +30,7 @@ RELEASE_FILE = BASE_DIR / "release.json"
 ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov", "webm", "mkv"}
 ALLOWED_AUDIO_EXTENSIONS = {"mp3", "wav", "m4a", "aac", "ogg"}
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
+ALLOWED_BACKGROUND_EXTENSIONS = ALLOWED_IMAGE_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS
 CLIP_MODES = {"device-screen", "full-screen", "background", "overlay"}
 THUMBNAIL_BUMPER_POSITIONS = {"none", "start", "end"}
 THUMBNAIL_BUMPER_FITS = {"cover", "contain"}
@@ -37,6 +38,7 @@ MAX_PROJECT_DURATION_SECONDS = 600
 DEFAULT_MIN_SCENE_SECONDS = 2.5
 DEFAULT_TARGET_SCENE_SECONDS = 4.5
 DEFAULT_MAX_SCENE_SECONDS = 7.0
+MAX_SCENE_PACING_SECONDS = MAX_PROJECT_DURATION_SECONDS
 RENDER_PROGRESS_RE = re.compile(r"(Rendered|Encoded)\s+(\d+)\s*/\s*(\d+)", re.IGNORECASE)
 RENDER_PHASE_RE = re.compile(r"^(Bundling|Copying public dir|Getting composition)", re.IGNORECASE)
 RENDER_THREADS: dict[str, threading.Thread] = {}
@@ -141,6 +143,14 @@ BACKGROUND_PRESETS = [
     "story-kids",
     "story-inspirational",
     "story-hindu-devotional",
+    "story-diya-glow",
+    "story-temple-lamps",
+    "story-devotional-aura",
+    "story-starry-night",
+    "story-moon-magic",
+    "story-magic-forest",
+    "story-haunted-mist",
+    "story-podcast-waves",
     "story-talk",
     "story-scary",
 ]
@@ -920,9 +930,9 @@ def parse_scene_pacing(form: Any) -> tuple[float, float, float]:
         except (TypeError, ValueError):
             return default
 
-    min_seconds = min(8.0, max(1.0, parse_number("minSceneSeconds", DEFAULT_MIN_SCENE_SECONDS)))
-    target_seconds = min(12.0, max(min_seconds, parse_number("targetSceneSeconds", DEFAULT_TARGET_SCENE_SECONDS)))
-    max_seconds = min(16.0, max(target_seconds, parse_number("maxSceneSeconds", DEFAULT_MAX_SCENE_SECONDS)))
+    min_seconds = min(120.0, max(1.0, parse_number("minSceneSeconds", DEFAULT_MIN_SCENE_SECONDS)))
+    target_seconds = min(MAX_SCENE_PACING_SECONDS, max(min_seconds, parse_number("targetSceneSeconds", DEFAULT_TARGET_SCENE_SECONDS)))
+    max_seconds = min(MAX_SCENE_PACING_SECONDS, max(target_seconds, parse_number("maxSceneSeconds", DEFAULT_MAX_SCENE_SECONDS)))
     return min_seconds, target_seconds, max_seconds
 
 
@@ -946,6 +956,42 @@ def merge_transcript_scene_group(group: list[dict[str, Any]]) -> dict[str, Any]:
         "words": words,
         "wordTimingSource": "voiceover" if words else "estimated",
     }
+
+
+def word_timing_source(words: list[dict[str, Any]]) -> str:
+    sources = {str(word.get("source") or "") for word in words if isinstance(word, dict)}
+    for source in ("whisperx", "voiceover", "script"):
+        if source in sources:
+            return source
+    return "estimated"
+
+
+def merge_transcript_scenes_into_one(scenes: list[dict[str, Any]], duration_seconds: float) -> list[dict[str, Any]]:
+    if not scenes:
+        return scenes
+    narration = " ".join(
+        " ".join(str(scene.get("narration") or scene.get("caption") or "").split())
+        for scene in scenes
+    ).strip()
+    words = sorted(
+        [word for scene in scenes for word in (scene.get("words") or []) if isinstance(word, dict)],
+        key=lambda word: float(word.get("start", 0) or 0),
+    )
+    end = max(
+        float(duration_seconds or 0),
+        max((float(scene.get("end", 0) or 0) for scene in scenes), default=0.0),
+        max((float(word.get("end", 0) or 0) for word in words), default=0.0),
+        0.5,
+    )
+    return [with_scene_design({
+        **scenes[0],
+        "start": 0,
+        "end": round(min(MAX_PROJECT_DURATION_SECONDS, end), 2),
+        "caption": caption_text(narration),
+        "narration": narration,
+        "words": words,
+        "wordTimingSource": word_timing_source(words),
+    }, 0)]
 
 
 def pace_transcript_scenes(
@@ -1571,6 +1617,9 @@ def project_payload_from_form(project_id: str, existing_project: dict[str, Any] 
     ]
 
     background_music_asset = uploaded_asset("backgroundMusic", public_dir, project_id, "background-music", ALLOWED_AUDIO_EXTENSIONS, existing_assets.get("backgroundMusic"))
+    custom_background_asset = uploaded_asset("customBackground", public_dir, project_id, "custom-background", ALLOWED_BACKGROUND_EXTENSIONS, existing_assets.get("customBackground"))
+    custom_background_path = public_asset_path(custom_background_asset)
+    custom_background_info = probe_media_info(custom_background_path) if custom_background_path and custom_background_path.exists() else None
     logo_asset = uploaded_asset("logo", public_dir, project_id, "logo", ALLOWED_IMAGE_EXTENSIONS, existing_assets.get("logo"))
     thumbnail_asset = uploaded_asset("thumbnailImage", public_dir, project_id, "thumbnail", ALLOWED_IMAGE_EXTENSIONS, existing_assets.get("thumbnail"))
     thumbnail_bumper = normalize_thumbnail_bumper({
@@ -1645,6 +1694,10 @@ def project_payload_from_form(project_id: str, existing_project: dict[str, Any] 
             "voiceover": voiceover_asset,
             "voiceoverDurationSeconds": voiceover_duration,
             "backgroundMusic": background_music_asset,
+            "customBackground": custom_background_asset,
+            "customBackgroundDurationSeconds": custom_background_info.get("duration") if custom_background_info else None,
+            "customBackgroundWidth": custom_background_info.get("width") if custom_background_info else None,
+            "customBackgroundHeight": custom_background_info.get("height") if custom_background_info else None,
             "logo": logo_asset,
             "thumbnail": thumbnail_asset,
         },
@@ -1746,6 +1799,7 @@ def transcribe_voiceover():
     original_script = normalize_original_script(request.form.get("originalScript"))
     use_whisperx_alignment = truthy_form_value(request.form.get("useWhisperxAlignment"), True)
     reduce_music_for_captions = truthy_form_value(request.form.get("reduceMusicForCaptions"), False)
+    single_scene_mode = truthy_form_value(request.form.get("singleSceneMode"), False)
 
     temp_dir = PROJECTS_DIR / "_transcription_uploads"
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -1810,12 +1864,15 @@ def transcribe_voiceover():
             if script_warning:
                 warnings.append(script_warning)
             transcript_source = "voiceover"
+        if single_scene_mode:
+            scenes = merge_transcript_scenes_into_one(scenes, duration_seconds)
         return jsonify({
             "scenes": scenes,
             "durationSeconds": round(duration_seconds, 2),
             "transcriptionLanguage": language or "auto",
             "transcriptSource": transcript_source,
             "audioPreprocessed": reduce_music_for_captions and transcription_audio_path != temp_path,
+            "singleSceneMode": single_scene_mode,
             "warning": "\n\n".join(warnings) if warnings else None,
         })
     except RuntimeError as exc:
@@ -1889,6 +1946,10 @@ def render_project(project_id: str):
     screen_duration = assets.get("screenDurationSeconds")
     if screen_asset and not screen_duration:
         screen_duration = probe_media_duration(REMOTION_PUBLIC_DIR / str(screen_asset))
+    custom_background_asset = assets.get("customBackground")
+    custom_background_duration = assets.get("customBackgroundDurationSeconds")
+    if custom_background_asset and not custom_background_duration:
+        custom_background_duration = probe_media_duration(REMOTION_PUBLIC_DIR / str(custom_background_asset))
 
     props = {
         "title": project.get("title"),
@@ -1903,6 +1964,8 @@ def render_project(project_id: str):
         "screenDurationSeconds": screen_duration,
         "voiceoverAsset": assets.get("voiceover"),
         "backgroundMusicAsset": assets.get("backgroundMusic"),
+        "customBackgroundAsset": custom_background_asset,
+        "customBackgroundDurationSeconds": custom_background_duration,
         "logoAsset": assets.get("logo"),
         "thumbnailAsset": assets.get("thumbnail"),
         "thumbnailBumper": project.get("thumbnailBumper"),

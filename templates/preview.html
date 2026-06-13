@@ -196,6 +196,10 @@
     <section id="previewStage" class="preview-stage vertical">
       <div class="scene-camera">
         <img id="backgroundImage" class="room-bg" alt="" />
+        <video id="customBackgroundVideo" class="custom-bg-video hidden" muted playsinline loop preload="auto"></video>
+        <div id="animatedBackgroundLayer" class="animated-background-layer" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
         <video id="backgroundClipVideo" class="timeline-clip background-clip hidden" muted playsinline preload="auto"></video>
         <div class="warm-overlay"></div>
         <div class="tablet-stage">

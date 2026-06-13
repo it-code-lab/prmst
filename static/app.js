@@ -21,11 +21,15 @@ const globalCaptionAccent = document.querySelector('#globalCaptionAccent');
 const minSceneSecondsInput = document.querySelector('#minSceneSeconds');
 const targetSceneSecondsInput = document.querySelector('#targetSceneSeconds');
 const maxSceneSecondsInput = document.querySelector('#maxSceneSeconds');
+const singleSceneModeInput = document.querySelector('#singleSceneMode');
 const themeToggleBtn = document.querySelector('#themeToggleBtn');
 const thumbnailInput = document.querySelector('#thumbnailInput');
 const thumbnailPreview = document.querySelector('#thumbnailPreview');
 const thumbnailPasteZone = document.querySelector('#thumbnailPasteZone');
 const thumbnailPasteHint = document.querySelector('#thumbnailPasteHint');
+const customBackgroundInput = document.querySelector('#customBackgroundInput');
+const customBackgroundUploadBox = document.querySelector('#customBackgroundUploadBox');
+const customBackgroundHint = document.querySelector('#customBackgroundHint');
 const thumbnailBumperPosition = document.querySelector('#thumbnailBumperPosition');
 const layoutDeviceLiftInput = document.querySelector('[name="layoutDeviceLift"]');
 const layoutCtaLiftInput = document.querySelector('[name="layoutCtaLift"]');
@@ -45,6 +49,7 @@ const screenUploadBox = document.querySelector('#screenUploadBox');
 const screenUploadLabel = document.querySelector('#screenUploadLabel');
 const voiceoverUploadBox = document.querySelector('#voiceoverUploadBox');
 const voiceoverUploadLabel = document.querySelector('#voiceoverUploadLabel');
+const MAX_PROJECT_SECONDS = 600;
 
 const BACKGROUND_PRESETS = [
   { id: 'reading-room', label: 'Reading room', thumb: '/preview-assets/assets/lifestyle-reading-room.png' },
@@ -60,11 +65,30 @@ const BACKGROUND_PRESETS = [
   { id: 'story-kids', label: 'Kids story', thumb: '/preview-assets/assets/background-story-kids.svg' },
   { id: 'story-inspirational', label: 'Inspirational', thumb: '/preview-assets/assets/background-story-inspirational.svg' },
   { id: 'story-hindu-devotional', label: 'Hindu devotional', thumb: '/preview-assets/assets/background-story-hindu-devotional.svg' },
+  { id: 'story-diya-glow', label: 'Diya glow', thumb: '/preview-assets/assets/background-story-diya-glow.svg' },
+  { id: 'story-temple-lamps', label: 'Temple lamps', thumb: '/preview-assets/assets/background-story-temple-lamps.svg' },
+  { id: 'story-devotional-aura', label: 'Devotional aura', thumb: '/preview-assets/assets/background-story-devotional-aura.svg' },
+  { id: 'story-starry-night', label: 'Twinkling stars', thumb: '/preview-assets/assets/background-story-starry-night.svg' },
+  { id: 'story-moon-magic', label: 'Moon story', thumb: '/preview-assets/assets/background-story-moon-magic.svg' },
+  { id: 'story-magic-forest', label: 'Magic forest', thumb: '/preview-assets/assets/background-story-magic-forest.svg' },
+  { id: 'story-haunted-mist', label: 'Haunted mist', thumb: '/preview-assets/assets/background-story-haunted-mist.svg' },
+  { id: 'story-podcast-waves', label: 'Podcast waves', thumb: '/preview-assets/assets/background-story-podcast-waves.svg' },
   { id: 'story-talk', label: 'Talk / podcast', thumb: '/preview-assets/assets/background-story-talk.svg' },
   { id: 'story-scary', label: 'Scary story', thumb: '/preview-assets/assets/background-story-scary.svg' },
+  { id: 'custom-media', label: 'Uploaded media', thumb: '/preview-assets/assets/background-custom-media.svg' },
 ];
-const DEVICE_BACKGROUND_PRESETS = BACKGROUND_PRESETS.filter((preset) => !preset.id.startsWith('story-'));
-const STORY_BACKGROUND_PRESETS = BACKGROUND_PRESETS.filter((preset) => preset.id.startsWith('story-'));
+const DEVICE_BACKGROUND_PRESETS = BACKGROUND_PRESETS.filter((preset) => !preset.id.startsWith('story-') && preset.id !== 'custom-media');
+const STORY_BACKGROUND_PRESETS = BACKGROUND_PRESETS.filter((preset) => preset.id.startsWith('story-') || preset.id === 'custom-media');
+const ANIMATED_BACKGROUND_IDS = new Set([
+  'story-diya-glow',
+  'story-temple-lamps',
+  'story-devotional-aura',
+  'story-starry-night',
+  'story-moon-magic',
+  'story-magic-forest',
+  'story-haunted-mist',
+  'story-podcast-waves',
+]);
 
 const DEVICE_PRESETS = [
   { id: 'tablet-pro', label: 'Tablet Pro' },
@@ -183,6 +207,8 @@ let dragSceneId = '';
 let dragClipId = '';
 let thumbnailClipboardFile = null;
 let thumbnailPreviewUrl = '';
+let customBackgroundPreviewUrl = '';
+let customBackgroundPreviewIsVideo = false;
 let thumbnailPositionTouched = false;
 let currentProjectType = 'screen-promo';
 let editingProjectId = '';
@@ -332,6 +358,12 @@ function applyProjectTypeMode(options = {}) {
 function syncTranscribeButtonState() {
   if (!transcribeVoiceoverBtn) return;
   transcribeVoiceoverBtn.disabled = !voiceoverInput?.files?.length;
+}
+
+function selectCustomBackgroundPreset() {
+  setRadioValue(document, '.global-background', 'custom-media');
+  syncSceneControlsWithGlobals();
+  saveStudioGlobalSettings();
 }
 
 function initProjectTypeControls() {
@@ -643,13 +675,29 @@ function renderThumbOptions(presets, selected, name, className, options = {}) {
       <span>Per scene</span>
     </label>
   ` : '';
-  return perScene + presets.map((preset) => `
-    <label class="thumb-option">
+  return perScene + presets.map((preset) => {
+    const isAnimated = ANIMATED_BACKGROUND_IDS.has(preset.id);
+    const mediaPreview = preset.id === 'custom-media'
+      ? customBackgroundThumbMarkup()
+      : `<img src="${preset.thumb}" alt="" />`;
+    return `
+    <label class="thumb-option${isAnimated ? ' animated-thumb-option' : ''}">
       <input type="radio" class="${className}" name="${name}" value="${preset.id}" ${preset.id === selected ? 'checked' : ''} />
-      <img src="${preset.thumb}" alt="" />
+      ${mediaPreview}
+      ${isAnimated ? '<span class="animated-badge" title="Animated background">Animated</span>' : ''}
       <span>${preset.label}</span>
     </label>
-  `).join('');
+  `;
+  }).join('');
+}
+
+function customBackgroundThumbMarkup() {
+  const src = customBackgroundPreviewUrl || '/preview-assets/assets/background-custom-media.svg';
+  const safeSrc = escapeHtml(src);
+  if (customBackgroundPreviewIsVideo) {
+    return `<div class="custom-media-preview has-media"><video src="${safeSrc}" muted playsinline loop></video><strong>Video</strong></div>`;
+  }
+  return `<div class="custom-media-preview${customBackgroundPreviewUrl ? ' has-media' : ''}"><img src="${safeSrc}" alt="" /><strong>${customBackgroundPreviewUrl ? 'Custom' : 'Upload'}</strong></div>`;
 }
 
 function renderDeviceOptions(presets, selected, name, options = {}) {
@@ -992,6 +1040,9 @@ function loadSampleScenes() {
 function collectScenes() {
   normalizeSceneTimeline();
   updateSceneNumbers();
+  if (singleSceneModeInput?.checked && sceneRows().length > 1) {
+    mergeScenesForSingleMode({ silent: true });
+  }
   return collectSceneRows();
 }
 
@@ -1105,15 +1156,23 @@ function reflowSceneTimings() {
 }
 
 function scenePacingConfig({ writeBack = true } = {}) {
-  const minSeconds = clampNumber(Number(minSceneSecondsInput?.value || 2.5), 1, 8);
-  const targetSeconds = clampNumber(Number(targetSceneSecondsInput?.value || 4.5), minSeconds, 12);
-  const maxSeconds = clampNumber(Number(maxSceneSecondsInput?.value || 7), Math.max(targetSeconds, minSeconds + 0.25), 16);
+  const singleScene = Boolean(singleSceneModeInput?.checked);
+  const minSeconds = clampNumber(Number(minSceneSecondsInput?.value || 2.5), 1, 120);
+  const targetSeconds = clampNumber(Number(targetSceneSecondsInput?.value || 4.5), minSeconds, MAX_PROJECT_SECONDS);
+  const maxSeconds = clampNumber(Number(maxSceneSecondsInput?.value || 7), Math.max(targetSeconds, minSeconds + 0.25), MAX_PROJECT_SECONDS);
   if (writeBack) {
     if (minSceneSecondsInput) minSceneSecondsInput.value = minSeconds;
     if (targetSceneSecondsInput) targetSceneSecondsInput.value = targetSeconds;
     if (maxSceneSecondsInput) maxSceneSecondsInput.value = maxSeconds;
+    syncSingleScenePacingState(singleScene);
   }
-  return { minSeconds, targetSeconds, maxSeconds };
+  return { minSeconds, targetSeconds, maxSeconds, singleScene };
+}
+
+function syncSingleScenePacingState(singleScene = Boolean(singleSceneModeInput?.checked)) {
+  [minSceneSecondsInput, targetSceneSecondsInput, maxSceneSecondsInput].forEach((control) => {
+    if (control) control.disabled = singleScene;
+  });
 }
 
 function initScenePacingControls() {
@@ -1121,11 +1180,15 @@ function initScenePacingControls() {
   if (minSceneSecondsInput && savedPacing.minSeconds) minSceneSecondsInput.value = savedPacing.minSeconds;
   if (targetSceneSecondsInput && savedPacing.targetSeconds) targetSceneSecondsInput.value = savedPacing.targetSeconds;
   if (maxSceneSecondsInput && savedPacing.maxSeconds) maxSceneSecondsInput.value = savedPacing.maxSeconds;
+  if (singleSceneModeInput) singleSceneModeInput.checked = Boolean(savedPacing.singleScene);
   scenePacingConfig();
-  [minSceneSecondsInput, targetSceneSecondsInput, maxSceneSecondsInput].forEach((control) => {
-    control?.addEventListener('change', () => {
+  [minSceneSecondsInput, targetSceneSecondsInput, maxSceneSecondsInput, singleSceneModeInput].forEach((control) => {
+    control?.addEventListener('change', (event) => {
       scenePacingConfig();
       saveStudioGlobalSettings();
+      if (event.currentTarget === singleSceneModeInput && singleSceneModeInput.checked) {
+        mergeScenesForSingleMode();
+      }
     });
   });
 }
@@ -1167,7 +1230,11 @@ function rebuildScenesByPacing(options = {}) {
     return;
   }
 
-  const { minSeconds, targetSeconds, maxSeconds } = scenePacingConfig();
+  const { minSeconds, targetSeconds, maxSeconds, singleScene } = scenePacingConfig();
+  if (singleScene) {
+    mergeScenesForSingleMode({ silent });
+    return;
+  }
   const groups = [];
   let buffer = [];
 
@@ -1212,6 +1279,33 @@ function rebuildScenesByPacing(options = {}) {
     projectForm.elements.durationSeconds.value = Math.ceil(Math.max(Number(projectForm.elements.durationSeconds.value || 0), lastSceneEnd()));
   }
   if (!silent) showMessage(`Rebuilt ${scenes.length} scenes into ${rebuilt.length} paced scenes. Word timings were preserved.`, 'success');
+}
+
+function mergeScenesForSingleMode(options = {}) {
+  const silent = Boolean(options.silent);
+  normalizeSceneTimeline();
+  const scenes = collectSceneRows().sort((a, b) => a.start - b.start);
+  if (!scenes.length) {
+    if (!silent) showMessage('Add or generate scenes before merging into one scene.', 'error');
+    return false;
+  }
+  if (scenes.length === 1) {
+    if (!silent) showMessage('This project already has one scene.', 'success');
+    return true;
+  }
+
+  const rebuilt = [mergeSceneGroup(scenes)];
+  sceneTableBody.innerHTML = '';
+  selectedSceneId = '';
+  rebuilt.forEach(addScene);
+  normalizeSceneTimeline();
+  updateSceneNumbers();
+  refreshClipPlacementOptions();
+  if (projectForm.elements.durationSeconds) {
+    projectForm.elements.durationSeconds.value = Math.ceil(Math.max(Number(projectForm.elements.durationSeconds.value || 0), lastSceneEnd()));
+  }
+  if (!silent) showMessage(`Merged ${scenes.length} scenes into one story scene. Word timings were preserved.`, 'success');
+  return true;
 }
 
 function mergeSceneGroup(group) {
@@ -1291,6 +1385,7 @@ async function generateScenesFromVoiceover(button) {
     formData.set('minSceneSeconds', pacing.minSeconds);
     formData.set('targetSceneSeconds', pacing.targetSeconds);
     formData.set('maxSceneSeconds', pacing.maxSeconds);
+    formData.set('singleSceneMode', pacing.singleScene ? '1' : '0');
     formData.set('productName', projectForm.elements.productName.value || '');
     formData.set('cta', projectForm.elements.cta.value || '');
 
@@ -1355,9 +1450,44 @@ function showExistingThumbnail(asset) {
   updateThumbnailPreview(null, 'Upload an image or focus here and paste with Ctrl+V.');
 }
 
+function showExistingCustomBackground(asset) {
+  setCustomBackgroundPreview(asset ? `/preview-assets/${String(asset).replace(/\\/g, '/')}` : '', isVideoAsset(asset));
+  if (customBackgroundHint) {
+    customBackgroundHint.textContent = asset
+      ? 'Saved media kept unless replaced'
+      : 'Image or looping video';
+  }
+  customBackgroundUploadBox?.classList.toggle('muted', !asset);
+  updateCustomBackgroundThumbPreviews();
+}
+
+function setCustomBackgroundPreview(src, isVideo) {
+  if (customBackgroundPreviewUrl && customBackgroundPreviewUrl.startsWith('blob:')) {
+    URL.revokeObjectURL(customBackgroundPreviewUrl);
+  }
+  customBackgroundPreviewUrl = src || '';
+  customBackgroundPreviewIsVideo = Boolean(isVideo);
+}
+
+function updateCustomBackgroundThumbPreviews() {
+  document.querySelectorAll('.custom-media-preview').forEach((preview) => {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = customBackgroundThumbMarkup().trim();
+    preview.replaceWith(wrapper.firstElementChild);
+  });
+  document.querySelectorAll('.custom-media-preview video').forEach((video) => {
+    video.play?.().catch?.(() => {});
+  });
+}
+
+function isVideoAsset(asset) {
+  return /\.(mp4|mov|webm|mkv)$/i.test(String(asset || '').split('?')[0]);
+}
+
 function clearMediaInputs() {
   if (screenRecordingInput) screenRecordingInput.value = '';
   if (voiceoverInput) voiceoverInput.value = '';
+  if (customBackgroundInput) customBackgroundInput.value = '';
   const backgroundMusicInput = projectForm?.elements?.backgroundMusic;
   if (backgroundMusicInput) backgroundMusicInput.value = '';
   const logoInput = projectForm?.elements?.logo;
@@ -1389,6 +1519,7 @@ function populateProjectForm(project) {
   clearMediaInputs();
   thumbnailPositionTouched = Boolean(project.thumbnailBumper?.position && project.thumbnailBumper.position !== 'none');
   showExistingThumbnail(editingProjectAssets.thumbnail);
+  showExistingCustomBackground(editingProjectAssets.customBackground);
 
   const scenes = Array.isArray(project.scenes) ? project.scenes : [];
   const globalSource = scenes[0] || {};
@@ -1433,6 +1564,7 @@ function startNewProject() {
   thumbnailClipboardFile = null;
   thumbnailPositionTouched = false;
   showExistingThumbnail('');
+  showExistingCustomBackground('');
   clipTableBody.innerHTML = '';
   loadSampleScenes();
   applyProjectTypeMode({ initial: true });
@@ -1604,6 +1736,13 @@ projectForm.addEventListener('submit', async (event) => {
     showMessage('Choose a screen recording video before saving a screen promo project.', 'error');
     return;
   }
+  const customBackgroundFile = customBackgroundInput?.files?.[0];
+  const hasCustomBackground = Boolean(customBackgroundFile || editingProjectAssets.customBackground);
+  const usesCustomBackground = scenes.some((scene) => scene.background === 'custom-media');
+  if (usesCustomBackground && !hasCustomBackground) {
+    showMessage('Upload a custom background media file before using the Uploaded media background.', 'error');
+    return;
+  }
   const clips = collectClips();
   const formData = new FormData(projectForm);
   if (thumbnailClipboardFile) {
@@ -1646,6 +1785,18 @@ document.querySelector('#reflowScenesBtn')?.addEventListener('click', reflowScen
 document.querySelector('#paceScenesBtn')?.addEventListener('click', rebuildScenesByPacing);
 transcribeVoiceoverBtn?.addEventListener('click', event => generateScenesFromVoiceover(event.target));
 voiceoverInput?.addEventListener('change', syncTranscribeButtonState);
+customBackgroundInput?.addEventListener('change', () => {
+  if (!customBackgroundInput.files?.length) {
+    showExistingCustomBackground(editingProjectAssets.customBackground);
+    return;
+  }
+  const file = customBackgroundInput.files[0];
+  setCustomBackgroundPreview(URL.createObjectURL(file), file.type.startsWith('video/') || isVideoAsset(file.name));
+  customBackgroundUploadBox?.classList.remove('muted');
+  if (customBackgroundHint) customBackgroundHint.textContent = 'Ready to use';
+  updateCustomBackgroundThumbPreviews();
+  selectCustomBackgroundPreset();
+});
 document.querySelector('#refreshProjectsBtn').addEventListener('click', loadProjects);
 newProjectBtn?.addEventListener('click', startNewProject);
 

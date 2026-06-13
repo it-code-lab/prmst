@@ -34,8 +34,17 @@ type Scene = {
     | 'story-kids'
     | 'story-inspirational'
     | 'story-hindu-devotional'
+    | 'story-diya-glow'
+    | 'story-temple-lamps'
+    | 'story-devotional-aura'
+    | 'story-starry-night'
+    | 'story-moon-magic'
+    | 'story-magic-forest'
+    | 'story-haunted-mist'
+    | 'story-podcast-waves'
     | 'story-talk'
-    | 'story-scary';
+    | 'story-scary'
+    | 'custom-media';
   device?: 'tablet-pro' | 'phone-modern' | 'laptop-silver' | 'browser-window' | 'full-screen';
   angle?: 'low-desk-left' | 'low-desk-right' | 'front-center' | 'floating-hero';
   motion?: 'slow-push-in' | 'screen-focus' | 'pan-left' | 'pan-right' | 'device-tilt' | 'cta-push';
@@ -91,6 +100,8 @@ export type PromoProps = {
   screenDurationSeconds?: number | null;
   voiceoverAsset?: string | null;
   backgroundMusicAsset?: string | null;
+  customBackgroundAsset?: string | null;
+  customBackgroundDurationSeconds?: number | null;
   logoAsset?: string | null;
   thumbnailAsset?: string | null;
   thumbnailBumper?: ThumbnailBumper;
@@ -142,6 +153,8 @@ export const defaultPromoProps: PromoProps = {
   screenDurationSeconds: null,
   voiceoverAsset: null,
   backgroundMusicAsset: null,
+  customBackgroundAsset: null,
+  customBackgroundDurationSeconds: null,
   logoAsset: null,
   thumbnailAsset: null,
   thumbnailBumper: {position: 'none', durationSeconds: 0.5, fit: 'cover'},
@@ -257,8 +270,17 @@ const backgroundAssets = {
   'story-kids': 'assets/background-story-kids.svg',
   'story-inspirational': 'assets/background-story-inspirational.svg',
   'story-hindu-devotional': 'assets/background-story-hindu-devotional.svg',
+  'story-diya-glow': 'assets/background-story-diya-glow.svg',
+  'story-temple-lamps': 'assets/background-story-temple-lamps.svg',
+  'story-devotional-aura': 'assets/background-story-devotional-aura.svg',
+  'story-starry-night': 'assets/background-story-starry-night.svg',
+  'story-moon-magic': 'assets/background-story-moon-magic.svg',
+  'story-magic-forest': 'assets/background-story-magic-forest.svg',
+  'story-haunted-mist': 'assets/background-story-haunted-mist.svg',
+  'story-podcast-waves': 'assets/background-story-podcast-waves.svg',
   'story-talk': 'assets/background-story-talk.svg',
   'story-scary': 'assets/background-story-scary.svg',
+  'custom-media': 'assets/background-custom-media.svg',
 };
 
 const captionFontStacks: Record<string, string> = {
@@ -292,10 +314,11 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
   const screenSrc = safeStatic(props.screenAsset);
   const voiceSrc = safeStatic(props.voiceoverAsset);
   const musicSrc = safeStatic(props.backgroundMusicAsset);
+  const customBackgroundSrc = safeStatic(props.customBackgroundAsset);
   const logoSrc = safeStatic(props.logoAsset);
 
   if (props.template === 'lifestyle') {
-    return <LifestylePromo {...props} screenSrc={screenSrc} voiceSrc={voiceSrc} musicSrc={musicSrc} logoSrc={logoSrc} thumbnailSrc={thumbnailSrc} resolvedThumbnailBumper={thumbnailBumper} layoutSettings={layout} />;
+    return <LifestylePromo {...props} screenSrc={screenSrc} voiceSrc={voiceSrc} musicSrc={musicSrc} customBackgroundSrc={customBackgroundSrc} logoSrc={logoSrc} thumbnailSrc={thumbnailSrc} resolvedThumbnailBumper={thumbnailBumper} layoutSettings={layout} />;
   }
 
   const entrance = spring({frame, fps, config: {damping: 18, stiffness: 120}});
@@ -397,7 +420,7 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
   );
 };
 
-const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc: string | null; musicSrc: string | null; logoSrc: string | null; thumbnailSrc: string | null; resolvedThumbnailBumper: ResolvedThumbnailBumper | null; layoutSettings: Required<LayoutSettings>}> = (props) => {
+const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc: string | null; musicSrc: string | null; customBackgroundSrc: string | null; logoSrc: string | null; thumbnailSrc: string | null; resolvedThumbnailBumper: ResolvedThumbnailBumper | null; layoutSettings: Required<LayoutSettings>}> = (props) => {
   const frame = useCurrentFrame();
   const {fps, width} = useVideoConfig();
   const playbackRate = clampNumber(props.previewSettings?.playbackRate, 0.75, 1.5, 1);
@@ -423,18 +446,15 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
   return (
     <AbsoluteFill style={{backgroundColor: '#eee2cf', overflow: 'hidden', fontFamily: 'Inter, Arial, sans-serif'}}>
       <AbsoluteFill style={{transform: camera}}>
-        <Img
-          src={staticFile(backgroundAssets[scene.background] || backgroundAssets['reading-room'])}
-          style={{
-            position: 'absolute',
-            inset: '-2%',
-            width: '104%',
-            height: '104%',
-            objectFit: 'cover',
-            transform: `scale(${bgScale}) translateY(${isLandscape ? '-5%' : '0%'})`,
-            filter: 'saturate(1.02) contrast(1.02)',
-          }}
+        <BackgroundMedia
+          background={scene.background}
+          customBackgroundSrc={props.customBackgroundSrc}
+          customBackgroundAsset={props.customBackgroundAsset}
+          customBackgroundDurationSeconds={props.customBackgroundDurationSeconds}
+          bgScale={bgScale}
+          isLandscape={isLandscape}
         />
+        <AnimatedStoryBackground background={scene.background} frame={timelineFrame} fps={fps} />
         <TimelineClips clips={clips} mode="background" fit="cover" />
         <AbsoluteFill
           style={{
@@ -510,6 +530,232 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
       <ThumbnailBumperOverlay thumbnailSrc={props.thumbnailSrc} thumbnailBumper={props.resolvedThumbnailBumper} contentDurationSeconds={props.durationSeconds} playbackRate={playbackRate} />
     </AbsoluteFill>
   );
+};
+
+const animatedStoryBackgrounds = new Set<Scene['background']>([
+  'story-diya-glow',
+  'story-temple-lamps',
+  'story-devotional-aura',
+  'story-starry-night',
+  'story-moon-magic',
+  'story-magic-forest',
+  'story-haunted-mist',
+  'story-podcast-waves',
+]);
+
+const BackgroundMedia: React.FC<{
+  background?: Scene['background'];
+  customBackgroundSrc: string | null;
+  customBackgroundAsset?: string | null;
+  customBackgroundDurationSeconds?: number | null;
+  bgScale: number;
+  isLandscape: boolean;
+}> = ({background, customBackgroundSrc, customBackgroundAsset, customBackgroundDurationSeconds, bgScale, isLandscape}) => {
+  const {fps} = useVideoConfig();
+  const style: React.CSSProperties = {
+    position: 'absolute',
+    inset: '-2%',
+    width: '104%',
+    height: '104%',
+    objectFit: 'cover',
+    transform: `scale(${bgScale}) translateY(${isLandscape ? '-5%' : '0%'})`,
+    filter: 'saturate(1.02) contrast(1.02)',
+  };
+
+  if (background === 'custom-media' && customBackgroundSrc) {
+    if (isVideoAsset(customBackgroundAsset)) {
+      const loopFrames = Math.max(1, Math.round(clampNumber(customBackgroundDurationSeconds, 0.25, 3600, 8) * fps));
+      return (
+        <Loop durationInFrames={loopFrames}>
+          <OffthreadVideo src={customBackgroundSrc} muted style={style} />
+        </Loop>
+      );
+    }
+    return <Img src={customBackgroundSrc} style={style} />;
+  }
+
+  const asset = background && backgroundAssets[background] ? backgroundAssets[background] : backgroundAssets['reading-room'];
+  return <Img src={staticFile(asset)} style={style} />;
+};
+
+function isVideoAsset(asset?: string | null): boolean {
+  return /\.(mp4|mov|webm|mkv)$/i.test(String(asset || '').split('?')[0]);
+}
+
+const AnimatedStoryBackground: React.FC<{background?: Scene['background']; frame: number; fps: number}> = ({background, frame, fps}) => {
+  if (!background || !animatedStoryBackgrounds.has(background)) return null;
+  const t = frame / Math.max(1, fps);
+  const glow = 0.72 + 0.2 * Math.sin(t * 2.2);
+
+  if (background === 'story-diya-glow' || background === 'story-temple-lamps') {
+    const positions = background === 'story-diya-glow'
+      ? [19, 33, 49, 65, 80]
+      : [11, 24, 42, 58, 74, 88];
+    return (
+      <AbsoluteFill style={{mixBlendMode: 'screen', pointerEvents: 'none'}}>
+        <AbsoluteFill style={{background: `radial-gradient(circle at 50% 45%, rgba(255,241,170,${0.24 + glow * 0.12}), transparent 18%), radial-gradient(circle at 50% 56%, rgba(251,146,60,.2), transparent 34%)`}} />
+        {positions.map((left, index) => {
+          const flicker = 0.85 + 0.22 * Math.sin(t * 7 + index * 1.8);
+          const bottom = background === 'story-temple-lamps' ? [20, 13, 9, 9, 13, 20][index] : 14;
+          return (
+            <div
+              key={left}
+              style={{
+                position: 'absolute',
+                left: `${left}%`,
+                bottom: `${bottom}%`,
+                width: 13 * flicker,
+                height: 28 * flicker,
+                borderRadius: '999px 999px 60% 60%',
+                background: 'radial-gradient(circle at 50% 25%, #fff7ad, #f59e0b 48%, rgba(249,115,22,.08) 72%, transparent)',
+                boxShadow: '0 0 34px rgba(251,191,36,.55)',
+                transform: `translateY(${-4 * flicker}px) scale(${index === 2 ? 1.18 : 1})`,
+              }}
+            />
+          );
+        })}
+      </AbsoluteFill>
+    );
+  }
+
+  if (background === 'story-devotional-aura') {
+    return (
+      <AbsoluteFill style={{mixBlendMode: 'screen', pointerEvents: 'none'}}>
+        <AbsoluteFill style={{background: `radial-gradient(circle at 50% 48%, rgba(255,247,237,${0.18 + glow * 0.14}), transparent 20%), radial-gradient(circle at 50% 50%, rgba(251,191,36,.24), transparent 36%)`}} />
+        {[0, 1, 2].map((index) => {
+          const phase = ((t * 0.18 + index / 3) % 1);
+          const size = 18 + phase * 36;
+          return (
+            <div
+              key={index}
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                width: `${size}%`,
+                aspectRatio: '1',
+                border: '3px solid rgba(255,247,237,.42)',
+                borderRadius: 999,
+                opacity: 0.48 * (1 - phase),
+                transform: 'translate(-50%, -50%)',
+              }}
+            />
+          );
+        })}
+      </AbsoluteFill>
+    );
+  }
+
+  if (background === 'story-starry-night' || background === 'story-moon-magic') {
+    const stars = [
+      [12, 24], [26, 15], [39, 32], [57, 18], [65, 38], [76, 58], [84, 22],
+    ];
+    return (
+      <AbsoluteFill style={{mixBlendMode: 'screen', pointerEvents: 'none'}}>
+        {stars.map(([left, top], index) => {
+          const pulse = 0.45 + 0.55 * Math.abs(Math.sin(t * 1.8 + index));
+          const floatY = background === 'story-moon-magic' ? -((t * 10 + index * 7) % 28) : -((t * 3 + index) % 10);
+          return (
+            <div
+              key={`${left}-${top}`}
+              style={{
+                position: 'absolute',
+                left: `${left}%`,
+                top: `${top}%`,
+                width: 4 + pulse * 5,
+                height: 4 + pulse * 5,
+                borderRadius: 999,
+                background: '#fff7ad',
+                opacity: pulse,
+                boxShadow: '0 0 20px rgba(253,230,138,.85)',
+                transform: `translateY(${floatY}px)`,
+              }}
+            />
+          );
+        })}
+      </AbsoluteFill>
+    );
+  }
+
+  if (background === 'story-magic-forest') {
+    return (
+      <AbsoluteFill style={{mixBlendMode: 'screen', pointerEvents: 'none'}}>
+        {[[15, 60], [34, 42], [53, 52], [76, 38], [86, 66]].map(([left, top], index) => {
+          const drift = Math.sin(t * 1.4 + index * 1.7);
+          return (
+            <div
+              key={`${left}-${top}`}
+              style={{
+                position: 'absolute',
+                left: `${left + drift * 2}%`,
+                top: `${top - Math.abs(drift) * 7}%`,
+                width: 8,
+                height: 8,
+                borderRadius: 999,
+                background: '#bbf7d0',
+                opacity: 0.45 + Math.abs(drift) * 0.5,
+                boxShadow: '0 0 18px #86efac',
+              }}
+            />
+          );
+        })}
+      </AbsoluteFill>
+    );
+  }
+
+  if (background === 'story-haunted-mist') {
+    return (
+      <AbsoluteFill style={{pointerEvents: 'none'}}>
+        {[48, 61, 72].map((top, index) => {
+          const x = -25 + ((t * 18 + index * 35) % 145);
+          return (
+            <div
+              key={top}
+              style={{
+                position: 'absolute',
+                left: `${x}%`,
+                top: `${top}%`,
+                width: '64%',
+                height: '16%',
+                borderRadius: 999,
+                background: 'radial-gradient(ellipse, rgba(203,213,225,.28), rgba(203,213,225,0) 68%)',
+                filter: 'blur(10px)',
+                opacity: 0.22,
+              }}
+            />
+          );
+        })}
+      </AbsoluteFill>
+    );
+  }
+
+  if (background === 'story-podcast-waves') {
+    return (
+      <AbsoluteFill style={{mixBlendMode: 'screen', pointerEvents: 'none'}}>
+        {[0, 1, 2, 3].map((index) => {
+          const phase = ((t * 0.35 + index * 0.2) % 1);
+          return (
+            <div
+              key={index}
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                width: `${16 + phase * 48}%`,
+                aspectRatio: '1',
+                border: '4px solid rgba(153,246,228,.34)',
+                borderRadius: 999,
+                opacity: 0.55 * (1 - phase),
+                transform: 'translate(-50%, -50%)',
+              }}
+            />
+          );
+        })}
+      </AbsoluteFill>
+    );
+  }
+
+  return null;
 };
 
 function captionPositionStyle(scene: Scene & typeof sceneDefaults, isLandscape: boolean, isSquare: boolean): React.CSSProperties {

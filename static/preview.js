@@ -7,6 +7,8 @@ const fullClipVideo = document.querySelector('#fullClipVideo');
 const backgroundClipVideo = document.querySelector('#backgroundClipVideo');
 const overlayClipVideo = document.querySelector('#overlayClipVideo');
 const backgroundImage = document.querySelector('#backgroundImage');
+const customBackgroundVideo = document.querySelector('#customBackgroundVideo');
+const animatedBackgroundLayer = document.querySelector('#animatedBackgroundLayer');
 const logoImage = document.querySelector('#logoImage');
 const captionChip = document.querySelector('#captionChip');
 const ctaPill = document.querySelector('#ctaPill');
@@ -73,9 +75,28 @@ const BACKGROUNDS = {
   'story-kids': 'assets/background-story-kids.svg',
   'story-inspirational': 'assets/background-story-inspirational.svg',
   'story-hindu-devotional': 'assets/background-story-hindu-devotional.svg',
+  'story-diya-glow': 'assets/background-story-diya-glow.svg',
+  'story-temple-lamps': 'assets/background-story-temple-lamps.svg',
+  'story-devotional-aura': 'assets/background-story-devotional-aura.svg',
+  'story-starry-night': 'assets/background-story-starry-night.svg',
+  'story-moon-magic': 'assets/background-story-moon-magic.svg',
+  'story-magic-forest': 'assets/background-story-magic-forest.svg',
+  'story-haunted-mist': 'assets/background-story-haunted-mist.svg',
+  'story-podcast-waves': 'assets/background-story-podcast-waves.svg',
   'story-talk': 'assets/background-story-talk.svg',
   'story-scary': 'assets/background-story-scary.svg',
+  'custom-media': 'assets/background-custom-media.svg',
 };
+const ANIMATED_BACKGROUNDS = new Set([
+  'story-diya-glow',
+  'story-temple-lamps',
+  'story-devotional-aura',
+  'story-starry-night',
+  'story-moon-magic',
+  'story-magic-forest',
+  'story-haunted-mist',
+  'story-podcast-waves',
+]);
 const DEFAULT_SCENE = {
   background: 'reading-room',
   device: 'tablet-pro',
@@ -481,7 +502,14 @@ function applySceneDesign(scene) {
 
   if (activeSceneKey !== sceneKey) {
     activeSceneKey = sceneKey;
-    backgroundImage.src = assetUrl(BACKGROUNDS[scene.background] || BACKGROUNDS[DEFAULT_SCENE.background]);
+    applyBackgroundMedia(scene.background);
+    if (ANIMATED_BACKGROUNDS.has(scene.background)) {
+      stage.dataset.animatedBackground = scene.background;
+      animatedBackgroundLayer?.classList.remove('hidden');
+    } else {
+      delete stage.dataset.animatedBackground;
+      animatedBackgroundLayer?.classList.add('hidden');
+    }
     stage.dataset.transition = scene.transition || DEFAULT_SCENE.transition;
     stage.dataset.captionStyle = captionStyle;
     stage.dataset.captionPosition = captionPosition;
@@ -513,10 +541,58 @@ function applySceneDesign(scene) {
   if (screenCanvas) screenCanvas.style.transform = `translate3d(0, 0, 0) scale(${zoomBase})`;
 }
 
+function applyBackgroundMedia(background) {
+  const customAsset = project.assets?.customBackground || '';
+  if (background === 'custom-media' && customAsset) {
+    const src = assetUrl(customAsset);
+    if (isVideoAsset(customAsset)) {
+      if (customBackgroundVideo && customBackgroundVideo.src !== location.origin + src && customBackgroundVideo.getAttribute('src') !== src) {
+        customBackgroundVideo.src = src;
+      }
+      customBackgroundVideo?.classList.remove('hidden');
+      backgroundImage?.classList.add('hidden');
+      return;
+    }
+    if (backgroundImage) {
+      backgroundImage.src = src;
+      backgroundImage.classList.remove('hidden');
+    }
+    customBackgroundVideo?.classList.add('hidden');
+    customBackgroundVideo?.pause();
+    return;
+  }
+
+  if (backgroundImage) {
+    backgroundImage.src = assetUrl(BACKGROUNDS[background] || BACKGROUNDS[DEFAULT_SCENE.background]);
+    backgroundImage.classList.remove('hidden');
+  }
+  customBackgroundVideo?.classList.add('hidden');
+  customBackgroundVideo?.pause();
+}
+
+function isVideoAsset(asset) {
+  return /\.(mp4|mov|webm|mkv)$/i.test(String(asset || '').split('?')[0]);
+}
+
 function updateTimelineClips(seconds) {
+  updateCustomBackgroundVideo(seconds);
   showTimelineClip(backgroundClipVideo, activeClip('background', seconds), seconds);
   showTimelineClip(fullClipVideo, activeClip('full-screen', seconds), seconds);
   showTimelineClip(overlayClipVideo, activeClip('overlay', seconds), seconds);
+}
+
+function updateCustomBackgroundVideo(seconds) {
+  if (!customBackgroundVideo || customBackgroundVideo.classList.contains('hidden') || !customBackgroundVideo.src) return;
+  try {
+    customBackgroundVideo.currentTime = Number.isFinite(customBackgroundVideo.duration) && customBackgroundVideo.duration > 0
+      ? seconds % customBackgroundVideo.duration
+      : seconds;
+  } catch {
+    // Ignore media that is not seekable yet.
+  }
+  if (playbackState === 'playing') {
+    customBackgroundVideo.play().catch(() => {});
+  }
 }
 
 function updateDeviceStageVisibility(scene, activeDeviceClip) {
@@ -708,7 +784,7 @@ function clamp(value, min, max) {
 }
 
 function mediaElements() {
-  return [screenVideo, deviceClipVideo, backgroundClipVideo, fullClipVideo, overlayClipVideo, voiceoverAudio, musicAudio].filter(Boolean);
+  return [screenVideo, deviceClipVideo, backgroundClipVideo, fullClipVideo, overlayClipVideo, customBackgroundVideo, voiceoverAudio, musicAudio].filter(Boolean);
 }
 
 function currentProjectTime() {

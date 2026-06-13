@@ -239,7 +239,13 @@
               <div class="design-field wide section-band story-bg-band">
                 <div class="field-row">
                   <span>Audio-to-video backgrounds</span>
-                  <small>Story, talk, and narration videos</small>
+                  <div class="custom-background-tools">
+                    <label id="customBackgroundUploadBox" class="custom-background-upload">
+                      <input id="customBackgroundInput" name="customBackground" type="file" accept="image/*,video/mp4,video/webm,video/quicktime,video/x-matroska" />
+                      <span>Upload background</span>
+                    </label>
+                    <small id="customBackgroundHint">Image or looping video</small>
+                  </div>
                 </div>
                 <div id="globalStoryBackgrounds" class="thumb-options compact background-story-options"></div>
               </div>
@@ -309,19 +315,23 @@
           <section class="pacing-panel">
             <div>
               <strong>Scene pacing</strong>
-              <p>Controls transcript scene length so visuals do not change too quickly.</p>
+              <p>Controls transcript scene length. Use one scene when a story should stay on the same visual.</p>
             </div>
+            <label class="single-scene-option">
+              <input id="singleSceneMode" name="singleSceneMode" type="checkbox" />
+              <span>Keep captions in one scene</span>
+            </label>
             <label>
               Minimum
-              <input id="minSceneSeconds" type="number" min="1" max="8" step="0.25" value="2.5" />
+              <input id="minSceneSeconds" type="number" min="1" max="120" step="0.25" value="2.5" />
             </label>
             <label>
               Preferred
-              <input id="targetSceneSeconds" type="number" min="2" max="12" step="0.25" value="4.5" />
+              <input id="targetSceneSeconds" type="number" min="2" max="600" step="0.25" value="4.5" />
             </label>
             <label>
               Maximum
-              <input id="maxSceneSeconds" type="number" min="3" max="16" step="0.25" value="7" />
+              <input id="maxSceneSeconds" type="number" min="3" max="600" step="0.25" value="7" />
             </label>
           </section>
 
