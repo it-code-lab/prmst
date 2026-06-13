@@ -113,10 +113,28 @@
               <span id="screenUploadLabel">Screen recording video</span>
               <input name="screenRecording" type="file" accept="video/mp4,video/webm,video/quicktime,video/x-matroska" required />
             </label>
-            <label id="voiceoverUploadBox" class="upload-box muted">
+            <div id="voiceoverUploadBox" class="upload-box muted voiceover-upload">
               <span id="voiceoverUploadLabel">Optional voiceover</span>
               <input id="voiceoverInput" name="voiceover" type="file" accept="audio/*" />
-            </label>
+              <label class="transcribe-language">
+                <span>Caption language</span>
+                <select id="transcriptionLanguage" name="transcriptionLanguage">
+                  <option value="auto">Auto detect</option>
+                  <option value="hi">Hindi (Devanagari)</option>
+                  <option value="en">English</option>
+                  <option value="ur">Urdu</option>
+                  <option value="bn">Bengali</option>
+                  <option value="ta">Tamil</option>
+                  <option value="te">Telugu</option>
+                  <option value="mr">Marathi</option>
+                  <option value="gu">Gujarati</option>
+                  <option value="kn">Kannada</option>
+                  <option value="ml">Malayalam</option>
+                  <option value="pa">Punjabi</option>
+                </select>
+              </label>
+              <button type="button" id="transcribeVoiceoverBtn" class="secondary small-btn transcribe-btn" disabled>Generate captions</button>
+            </div>
             <label class="upload-box muted">
               <span>Optional background music</span>
               <input name="backgroundMusic" type="file" accept="audio/*" />
@@ -125,6 +143,14 @@
               <span>Optional logo</span>
               <input name="logo" type="file" accept="image/*" />
             </label>
+            <div class="upload-box muted script-upload">
+              <span>Original story / script</span>
+              <textarea id="originalScriptInput" name="originalScript" rows="5" placeholder="Paste the exact text used to create the audio. If provided, captions will match this text word for word."></textarea>
+              <label class="script-align-option">
+                <input id="useWhisperxAlignment" name="useWhisperxAlignment" type="checkbox" checked />
+                <span>Use WhisperX word timing</span>
+              </label>
+            </div>
           </section>
 
           <section class="thumbnail-bumper-panel">
@@ -190,47 +216,68 @@
             <span>Timeline</span>
           </div>
 
-          <section class="global-caption-panel">
-            <div>
-              <strong>Global scene look</strong>
-              <p>Applied to every scene unless visual overrides are enabled inside a scene.</p>
-            </div>
-            <div class="global-visual-grid">
-              <div class="design-field wide">
-                <span>Background</span>
-                <div id="globalBackgrounds" class="thumb-options compact"></div>
+          <section class="global-caption-panel scene-look-panel">
+            <div class="section-row">
+              <div>
+                <strong>Global scene look</strong>
+                <p>Applied to every scene unless visual overrides are enabled inside a scene.</p>
               </div>
-              <div class="design-field wide">
-                <span>Device</span>
+              <span class="section-chip">Visuals</span>
+            </div>
+            <div class="global-visual-grid scene-look-grid">
+              <div class="design-field wide section-band device-bg-band">
+                <div class="field-row">
+                  <span>Device backgrounds</span>
+                  <small>Best for screen recordings</small>
+                </div>
+                <div id="globalDeviceBackgrounds" class="thumb-options compact background-device-options"></div>
+              </div>
+              <div class="design-field wide section-band story-bg-band">
+                <div class="field-row">
+                  <span>Audio-to-video backgrounds</span>
+                  <small>Story, talk, and narration videos</small>
+                </div>
+                <div id="globalStoryBackgrounds" class="thumb-options compact background-story-options"></div>
+              </div>
+              <div class="design-field wide section-band device-band">
+                <div class="field-row">
+                  <span>Device</span>
+                  <small>Frame style for screen content</small>
+                </div>
                 <div id="globalDevices" class="device-options compact"></div>
               </div>
-              <label class="design-field">
-                Angle
-                <select id="globalAngle"></select>
-              </label>
-              <label class="design-field">
-                Animation
-                <select id="globalMotion"></select>
-              </label>
-              <label class="design-field zoom-field">
-                Animation amount <strong id="globalMotionAmountValue">2.20×</strong>
-                <input id="globalMotionAmount" type="range" min="0.5" max="2.2" step="0.05" value="2.2" />
-              </label>
-              <label class="design-field">
-                Transition
-                <select id="globalTransition"></select>
-              </label>
-              <label class="design-field zoom-field">
-                Screen zoom <strong id="globalScreenZoomValue">1.00×</strong>
-                <input id="globalScreenZoom" type="range" min="1" max="1.6" step="0.01" value="1" />
-              </label>
+              <div class="scene-look-controls">
+                <label class="design-field">
+                  Angle
+                  <select id="globalAngle"></select>
+                </label>
+                <label class="design-field">
+                  Animation
+                  <select id="globalMotion"></select>
+                </label>
+                <label class="design-field zoom-field">
+                  Animation amount <strong id="globalMotionAmountValue">2.20×</strong>
+                  <input id="globalMotionAmount" type="range" min="0.5" max="2.2" step="0.05" value="2.2" />
+                </label>
+                <label class="design-field">
+                  Transition
+                  <select id="globalTransition"></select>
+                </label>
+                <label class="design-field zoom-field">
+                  Screen zoom <strong id="globalScreenZoomValue">1.00×</strong>
+                  <input id="globalScreenZoom" type="range" min="1" max="1.6" step="0.01" value="1" />
+                </label>
+              </div>
             </div>
           </section>
 
-          <section class="global-caption-panel">
-            <div>
-              <strong>Global caption style</strong>
-              <p>Applied to every scene unless caption overrides are enabled inside a scene.</p>
+          <section class="global-caption-panel caption-look-panel">
+            <div class="section-row">
+              <div>
+                <strong>Global caption style</strong>
+                <p>Applied to every scene unless caption overrides are enabled inside a scene.</p>
+              </div>
+              <span class="section-chip caption-chip">Captions</span>
             </div>
             <div id="globalCaptionStyles" class="caption-style-options compact"></div>
             <div class="global-caption-fields">
@@ -253,7 +300,6 @@
             <button type="button" id="addSceneBtn" class="secondary">+ Add scene</button>
             <button type="button" id="addSceneAfterBtn" class="secondary">+ Insert scene after selected</button>
             <button type="button" id="loadSampleBtn" class="secondary">Load sample scenes</button>
-            <button type="button" id="transcribeVoiceoverBtn" class="secondary">Generate from voiceover</button>
           </div>
 
           <section class="pacing-panel">
@@ -326,10 +372,13 @@
 
           <div class="save-bar">
             <div>
-              <strong>Ready for preview</strong>
-              <span>Save the project to open the preview studio.</span>
+              <strong id="saveBarTitle">Ready for preview</strong>
+              <span id="saveBarHint">Save the project to open the preview studio.</span>
             </div>
-            <button class="primary" type="submit">Save Project</button>
+            <div class="save-actions">
+              <button id="newProjectBtn" class="secondary hidden" type="button">New Project</button>
+              <button id="saveProjectBtn" class="primary" type="submit">Save Project</button>
+            </div>
           </div>
         </form>
 

@@ -1073,21 +1073,19 @@ kbd {
 
 .preview-stage.landscape .caption-chip {
   top: 7%;
-  left: 8%;
-  right: 58%;
-  align-items: flex-start;
+  left: 7%;
+  right: 7%;
+  align-items: center;
 }
 
 .preview-stage.landscape[data-caption-position="center"] .caption-chip {
   top: 50%;
-  right: 54%;
 }
 
 .preview-stage.landscape[data-caption-position="bottom"] .caption-chip,
 .preview-stage.landscape[data-caption-style="minimal-subtitle"] .caption-chip {
   top: auto;
   bottom: 10%;
-  right: 54%;
 }
 
 .preview-stage.landscape[data-caption-position="device"] .caption-chip,
@@ -1096,6 +1094,7 @@ kbd {
   bottom: auto;
   left: 48%;
   right: 8%;
+  align-items: flex-start;
 }
 
 .preview-stage.landscape .cta-pill {

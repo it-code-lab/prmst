@@ -113,6 +113,8 @@ const CAPTION_FONT_STACKS = {
   Tahoma: 'Tahoma, Geneva, sans-serif',
   'Comic Sans MS': '"Comic Sans MS", "Comic Sans", cursive',
 };
+const CAPTION_WORD_MAX = 8;
+const CAPTION_SENTENCE_MAX = 12;
 const scenes = Array.isArray(project.scenes) ? project.scenes : [];
 const clips = Array.isArray(project.clips) ? project.clips : [];
 const duration = Math.max(5, Number(project.durationSeconds || 30));
@@ -124,6 +126,12 @@ const captionTimeline = scenes.map((scene) => {
   const words = sceneWords(scene);
   return { scene, words, timingSource: words.some((word) => word.source === 'voiceover') ? 'voiceover' : 'estimated' };
 });
+const captionTimelineWords = captionTimeline.flatMap((entry) => (
+  entry.words.map((word, index) => ({
+    ...word,
+    sentenceBreak: index === entry.words.length - 1,
+  }))
+));
 const previewSettingsKey = `promo-preview-captions:${project.id || 'default'}`;
 const audioSettingsKey = `promo-preview-audio:${project.id || 'default'}`;
 let activeSceneKey = '';
@@ -269,7 +277,10 @@ function cleanWord(word) {
 }
 
 function setCaption(caption, scene, seconds, words = []) {
-  const group = captionGroup(words, scene, seconds);
+  const sourceWords = previewCaptionSettings.groupMode === 'sentences' && captionTimelineWords.length
+    ? captionTimelineWords
+    : words;
+  const group = captionGroup(sourceWords, scene, seconds);
   const boxMode = previewCaptionSettings.boxMode === 'lines' ? 'lines' : 'single';
   const fallbackLines = String(caption || project.title || '').split(/\n+/).filter(Boolean).map((line) => line.split(/\s+/).filter(Boolean));
   const lines = group.words.length
@@ -320,7 +331,7 @@ function captionGroup(words, scene, seconds) {
 function captionWordGroup(words, scene, seconds) {
   if (!words.length) return { words: [], activeIndex: -1 };
   const activeIndex = activeCaptionWordIndex(words, seconds);
-  const wordsPerGroup = clampCaptionCount(previewCaptionSettings.wordsPerGroup, 1, 8, 3);
+  const wordsPerGroup = clampCaptionCount(previewCaptionSettings.wordsPerGroup, 1, CAPTION_WORD_MAX, 3);
   const groupStart = Math.floor(activeIndex / wordsPerGroup) * wordsPerGroup;
   return {
     words: words.slice(groupStart, groupStart + wordsPerGroup).map((word, offset) => captionToken(word, groupStart + offset, activeIndex, seconds)),
@@ -333,7 +344,7 @@ function captionSentenceGroup(words, scene, seconds) {
   const activeIndex = activeCaptionWordIndex(words, seconds);
   const groups = sentenceIndexGroups(words);
   const activeSentenceIndex = Math.max(0, groups.findIndex((indexes) => indexes.includes(activeIndex)));
-  const sentencesPerGroup = clampCaptionCount(previewCaptionSettings.sentencesPerGroup, 1, 4, 1);
+  const sentencesPerGroup = clampCaptionCount(previewCaptionSettings.sentencesPerGroup, 1, CAPTION_SENTENCE_MAX, 1);
   const sentenceStart = Math.floor(activeSentenceIndex / sentencesPerGroup) * sentencesPerGroup;
   const visibleIndexes = groups.slice(sentenceStart, sentenceStart + sentencesPerGroup).flat();
   return {
@@ -347,7 +358,7 @@ function sentenceIndexGroups(words) {
   let current = [];
   words.forEach((word, index) => {
     current.push(index);
-    if (/[.!?\u0964]$/.test(word.text) || current.length >= 18) {
+    if (/[.!?\u0964]$/.test(word.text) || word.sentenceBreak) {
       groups.push(current);
       current = [];
     }
@@ -1111,13 +1122,13 @@ function syncCaptionControls() {
   if (captionPositionSelect) captionPositionSelect.value = previewCaptionSettings.position || '';
   const groupMode = previewCaptionSettings.groupMode === 'sentences' ? 'sentences' : 'words';
   const count = groupMode === 'sentences'
-    ? clampCaptionCount(previewCaptionSettings.sentencesPerGroup, 1, 4, 1)
-    : clampCaptionCount(previewCaptionSettings.wordsPerGroup, 1, 8, 3);
+    ? clampCaptionCount(previewCaptionSettings.sentencesPerGroup, 1, CAPTION_SENTENCE_MAX, 1)
+    : clampCaptionCount(previewCaptionSettings.wordsPerGroup, 1, CAPTION_WORD_MAX, 3);
   if (captionGroupModeSelect) captionGroupModeSelect.value = groupMode;
   if (captionCountLabel) captionCountLabel.textContent = groupMode === 'sentences' ? 'Sentences' : 'Words';
   if (captionWordsInput) {
     captionWordsInput.min = '1';
-    captionWordsInput.max = groupMode === 'sentences' ? '4' : '8';
+    captionWordsInput.max = groupMode === 'sentences' ? String(CAPTION_SENTENCE_MAX) : String(CAPTION_WORD_MAX);
     captionWordsInput.value = String(count);
   }
   if (captionWordsValue) captionWordsValue.textContent = String(count);
@@ -1152,10 +1163,10 @@ function wireCaptionControls() {
   });
   captionWordsInput?.addEventListener('input', () => {
     if (previewCaptionSettings.groupMode === 'sentences') {
-      previewCaptionSettings.sentencesPerGroup = clampCaptionCount(captionWordsInput.value, 1, 4, 1);
+      previewCaptionSettings.sentencesPerGroup = clampCaptionCount(captionWordsInput.value, 1, CAPTION_SENTENCE_MAX, 1);
       if (captionWordsValue) captionWordsValue.textContent = String(previewCaptionSettings.sentencesPerGroup);
     } else {
-      previewCaptionSettings.wordsPerGroup = clampCaptionCount(captionWordsInput.value, 1, 8, 3);
+      previewCaptionSettings.wordsPerGroup = clampCaptionCount(captionWordsInput.value, 1, CAPTION_WORD_MAX, 3);
       if (captionWordsValue) captionWordsValue.textContent = String(previewCaptionSettings.wordsPerGroup);
     }
     savePreviewCaptionSettings();

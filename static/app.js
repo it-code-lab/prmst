@@ -4,7 +4,8 @@ const projectForm = document.querySelector('#projectForm');
 const message = document.querySelector('#message');
 const projectsList = document.querySelector('#projectsList');
 const projectsSummary = document.querySelector('#projectsSummary');
-const globalBackgrounds = document.querySelector('#globalBackgrounds');
+const globalDeviceBackgrounds = document.querySelector('#globalDeviceBackgrounds');
+const globalStoryBackgrounds = document.querySelector('#globalStoryBackgrounds');
 const globalDevices = document.querySelector('#globalDevices');
 const globalAngle = document.querySelector('#globalAngle');
 const globalMotion = document.querySelector('#globalMotion');
@@ -28,8 +29,17 @@ const thumbnailPasteHint = document.querySelector('#thumbnailPasteHint');
 const thumbnailBumperPosition = document.querySelector('#thumbnailBumperPosition');
 const layoutDeviceLiftInput = document.querySelector('[name="layoutDeviceLift"]');
 const layoutCtaLiftInput = document.querySelector('[name="layoutCtaLift"]');
+const saveBarTitle = document.querySelector('#saveBarTitle');
+const saveBarHint = document.querySelector('#saveBarHint');
+const saveProjectBtn = document.querySelector('#saveProjectBtn');
+const newProjectBtn = document.querySelector('#newProjectBtn');
 const projectTypeInputs = [...document.querySelectorAll('[name="projectType"]')];
 const screenRecordingInput = projectForm?.elements.screenRecording;
+const voiceoverInput = document.querySelector('#voiceoverInput');
+const transcribeVoiceoverBtn = document.querySelector('#transcribeVoiceoverBtn');
+const transcriptionLanguage = document.querySelector('#transcriptionLanguage');
+const originalScriptInput = document.querySelector('#originalScriptInput');
+const useWhisperxAlignmentInput = document.querySelector('#useWhisperxAlignment');
 const screenUploadBox = document.querySelector('#screenUploadBox');
 const screenUploadLabel = document.querySelector('#screenUploadLabel');
 const voiceoverUploadBox = document.querySelector('#voiceoverUploadBox');
@@ -52,6 +62,8 @@ const BACKGROUND_PRESETS = [
   { id: 'story-talk', label: 'Talk / podcast', thumb: '/preview-assets/assets/background-story-talk.svg' },
   { id: 'story-scary', label: 'Scary story', thumb: '/preview-assets/assets/background-story-scary.svg' },
 ];
+const DEVICE_BACKGROUND_PRESETS = BACKGROUND_PRESETS.filter((preset) => !preset.id.startsWith('story-'));
+const STORY_BACKGROUND_PRESETS = BACKGROUND_PRESETS.filter((preset) => preset.id.startsWith('story-'));
 
 const DEVICE_PRESETS = [
   { id: 'tablet-pro', label: 'Tablet Pro' },
@@ -172,6 +184,8 @@ let thumbnailClipboardFile = null;
 let thumbnailPreviewUrl = '';
 let thumbnailPositionTouched = false;
 let currentProjectType = 'screen-promo';
+let editingProjectId = '';
+let editingProjectAssets = {};
 
 function showMessage(text, type = '') {
   message.textContent = text;
@@ -298,6 +312,7 @@ function applyProjectTypeMode(options = {}) {
   }
   screenUploadBox?.classList.toggle('muted', isAudioVideo);
   voiceoverUploadBox?.classList.toggle('muted', !isAudioVideo);
+  syncTranscribeButtonState();
 
   if (isAudioVideo && previousType !== 'audio-video' && !options.initial) {
     setRadioValue(document, '.global-device', 'full-screen');
@@ -311,6 +326,11 @@ function applyProjectTypeMode(options = {}) {
     saveStudioGlobalSettings();
     showMessage('Audio-to-video mode is ready. Add audio, generate captions, then pick a background and caption style.', 'success');
   }
+}
+
+function syncTranscribeButtonState() {
+  if (!transcribeVoiceoverBtn) return;
+  transcribeVoiceoverBtn.disabled = !voiceoverInput?.files?.length;
 }
 
 function initProjectTypeControls() {
@@ -342,6 +362,24 @@ function globalCaptionDesign() {
     captionAccent: globalCaptionAccent?.value || DEFAULT_DESIGN.captionAccent,
     captionAnimationAmount: DEFAULT_DESIGN.captionAnimationAmount,
   };
+}
+
+function applyGlobalVisualDesign(design = {}) {
+  setRadioValue(document, '.global-background', design.background || '');
+  setRadioValue(document, '.global-device', design.device || '');
+  if (globalAngle) globalAngle.value = design.angle || '';
+  if (globalMotion) globalMotion.value = design.motion || '';
+  if (globalTransition) globalTransition.value = design.transition || '';
+  if (globalMotionAmount) globalMotionAmount.value = Number(design.motionAmount || DEFAULT_DESIGN.motionAmount);
+  if (globalScreenZoom) globalScreenZoom.value = Number(design.screenZoom || DEFAULT_DESIGN.screenZoom);
+  syncGlobalRangeLabels();
+}
+
+function applyGlobalCaptionDesign(design = {}) {
+  setRadioValue(document, '.global-caption-style', design.captionStyle || DEFAULT_DESIGN.captionStyle);
+  if (globalCaptionPosition) globalCaptionPosition.value = design.captionPosition || DEFAULT_DESIGN.captionPosition;
+  if (globalCaptionSize) globalCaptionSize.value = design.captionSize || DEFAULT_DESIGN.captionSize;
+  if (globalCaptionAccent) globalCaptionAccent.value = design.captionAccent || DEFAULT_DESIGN.captionAccent;
 }
 
 function globalSceneDesign() {
@@ -387,8 +425,11 @@ function handleGlobalCaptionChange() {
 
 function initGlobalVisualControls() {
   const savedVisual = loadStudioGlobalSettings().visual || {};
-  if (globalBackgrounds) {
-    globalBackgrounds.innerHTML = renderThumbOptions(BACKGROUND_PRESETS, savedVisual.background || '', 'global-background', 'global-background', { perScene: true });
+  if (globalDeviceBackgrounds) {
+    globalDeviceBackgrounds.innerHTML = renderThumbOptions(DEVICE_BACKGROUND_PRESETS, savedVisual.background || '', 'global-background', 'global-background', { perScene: true });
+  }
+  if (globalStoryBackgrounds) {
+    globalStoryBackgrounds.innerHTML = renderThumbOptions(STORY_BACKGROUND_PRESETS, savedVisual.background || '', 'global-background', 'global-background');
   }
   if (globalDevices) {
     globalDevices.innerHTML = renderDeviceOptions(DEVICE_PRESETS, savedVisual.device || '', 'global-device', { perScene: true });
@@ -401,7 +442,7 @@ function initGlobalVisualControls() {
   syncGlobalRangeLabels();
   globalMotionAmount?.addEventListener('input', handleGlobalVisualChange);
   globalScreenZoom?.addEventListener('input', handleGlobalVisualChange);
-  [globalBackgrounds, globalDevices, globalAngle, globalMotion, globalTransition].forEach((control) => {
+  [globalDeviceBackgrounds, globalStoryBackgrounds, globalDevices, globalAngle, globalMotion, globalTransition].forEach((control) => {
     control?.addEventListener('change', handleGlobalVisualChange);
   });
 }
@@ -831,20 +872,29 @@ function normalizeSceneTimeline() {
 
 function addClip(clip = {}) {
   const rowId = `clip_${Date.now()}_${Math.round(Math.random() * 100000)}`;
+  const clipStart = Number(clip.start);
+  const clipEnd = Number(clip.end);
+  const timelineDuration = Number.isFinite(clipStart) && Number.isFinite(clipEnd) && clipEnd > clipStart
+    ? Number((clipEnd - clipStart).toFixed(2))
+    : (clip.durationSeconds || DEFAULT_CLIP_DURATION);
   const tr = document.createElement('tr');
   tr.className = 'clip-row';
   tr.dataset.clipId = rowId;
+  tr.dataset.asset = clip.asset || '';
+  tr.dataset.start = clip.start ?? '';
+  tr.dataset.end = clip.end ?? '';
   tr.dataset.preferredPlacement = clip.placement || 'start';
   tr.draggable = true;
+  const assetNote = clip.asset ? '<small class="asset-note">Saved clip kept unless replaced.</small>' : '';
   tr.innerHTML = `
     <td class="drag-cell"><button type="button" class="drag-handle" title="Drag clip">☰</button></td>
     <td>
       <span class="clip-placement-badge">Start</span>
       <select class="clip-placement"></select>
     </td>
-    <td><input type="number" step="0.25" min="0.5" class="clip-duration" value="${clip.durationSeconds || DEFAULT_CLIP_DURATION}" /></td>
+    <td><input type="number" step="0.25" min="0.5" class="clip-duration" value="${timelineDuration}" /></td>
     <td><select class="clip-mode">${renderOptions(CLIP_MODE_PRESETS, clip.mode || 'device-screen')}</select></td>
-    <td><input name="${rowId}" type="file" class="clip-file" accept="video/mp4,video/webm,video/quicktime,video/x-matroska" /></td>
+    <td><input name="${rowId}" type="file" class="clip-file" accept="video/mp4,video/webm,video/quicktime,video/x-matroska" />${assetNote}</td>
     <td><input class="clip-label" value="${escapeHtml(clip.label || '')}" placeholder="Optional" /></td>
     <td><button type="button" class="delete">×</button></td>
   `;
@@ -871,6 +921,8 @@ function addClip(clip = {}) {
   tr.querySelector('.delete').addEventListener('click', () => tr.remove());
   tr.querySelector('.clip-placement').addEventListener('change', () => {
     tr.dataset.preferredPlacement = tr.querySelector('.clip-placement').value;
+    tr.dataset.start = '';
+    tr.dataset.end = '';
     syncClipPlacementBadge(tr);
   });
   clipTableBody.appendChild(tr);
@@ -1002,24 +1054,31 @@ function collectClips() {
   return [...clipTableBody.querySelectorAll('tr.clip-row')].map(row => {
     const fileInput = row.querySelector('.clip-file');
     const placement = row.querySelector('.clip-placement').value;
+    const existingAsset = row.dataset.asset || '';
+    const hasReplacementFile = fileInput.files.length > 0;
+    const storedStart = Number(row.dataset.start);
+    const storedEnd = Number(row.dataset.end);
     const baseStart = placement === 'start'
       ? 0
       : (sceneTimings.find((scene) => scene.id === placement)?.end ?? lastSceneEnd());
     const duration = Number(row.querySelector('.clip-duration').value || DEFAULT_CLIP_DURATION);
     const safeDuration = Math.max(0.5, duration);
     const offset = placementOffsets.get(placement) || 0;
-    const start = baseStart + offset;
-    placementOffsets.set(placement, offset + safeDuration);
+    const shouldUseStoredTiming = existingAsset && !hasReplacementFile && Number.isFinite(storedStart) && Number.isFinite(storedEnd) && storedEnd > storedStart;
+    const start = shouldUseStoredTiming ? storedStart : baseStart + offset;
+    const end = shouldUseStoredTiming ? storedStart + safeDuration : start + safeDuration;
+    if (!shouldUseStoredTiming) placementOffsets.set(placement, offset + safeDuration);
     return {
       start,
-      end: start + safeDuration,
+      end,
       mode: row.querySelector('.clip-mode').value,
       label: row.querySelector('.clip-label').value.trim() || fileInput.files[0]?.name || 'Clip',
       fileField: fileInput.name,
+      asset: existingAsset,
     };
   }).filter((clip, index) => {
     const row = clipTableBody.querySelectorAll('tr.clip-row')[index];
-    return clip.end > clip.start && row.querySelector('.clip-file').files.length > 0;
+    return clip.end > clip.start && (row.querySelector('.clip-file').files.length > 0 || row.dataset.asset);
   });
 }
 
@@ -1203,19 +1262,29 @@ function shiftStoredWords(row, delta) {
 }
 
 async function generateScenesFromVoiceover(button) {
-  const audio = document.querySelector('#voiceoverInput').files[0];
+  const audio = voiceoverInput?.files?.[0];
   if (!audio) {
-    showMessage('Choose a voiceover file first, then generate captions from it.', 'error');
+    showMessage('Choose an audio file first, then generate captions from it.', 'error');
+    syncTranscribeButtonState();
     return;
   }
 
   button.disabled = true;
   button.textContent = 'Transcribing...';
-  showMessage('Transcribing voiceover. The first run can take a while if the local model needs to load.', '');
+  const hasOriginalScript = Boolean(normalizeWhitespace(originalScriptInput?.value || ''));
+  showMessage(
+    hasOriginalScript
+      ? 'Aligning the original script to the audio for word-level caption timing.'
+      : 'Transcribing voiceover. The first run can take a while if the local model needs to load.',
+    '',
+  );
   try {
     const formData = new FormData();
     formData.set('audio', audio);
     formData.set('durationSeconds', projectForm.elements.durationSeconds.value || '30');
+    formData.set('transcriptionLanguage', transcriptionLanguage?.value || 'auto');
+    formData.set('originalScript', originalScriptInput?.value || '');
+    formData.set('useWhisperxAlignment', useWhisperxAlignmentInput?.checked ? '1' : '0');
     const pacing = scenePacingConfig();
     formData.set('minSceneSeconds', pacing.minSeconds);
     formData.set('targetSceneSeconds', pacing.targetSeconds);
@@ -1234,17 +1303,139 @@ async function generateScenesFromVoiceover(button) {
       projectForm.elements.durationSeconds.value = Math.ceil(Number(data.durationSeconds));
     }
     refreshClipPlacementOptions();
-    showMessage(`Generated ${data.scenes.length} caption scenes from voiceover.`, 'success');
+    const warning = data.warning ? `\n\n${data.warning}` : '';
+    const sourceText = data.transcriptSource === 'script-whisperx'
+      ? ' from the original script with WhisperX timing'
+      : data.transcriptSource === 'script'
+        ? ' from the original script'
+        : ' from voiceover';
+    showMessage(`Generated ${data.scenes.length} caption scenes${sourceText}.${warning}`, data.warning ? '' : 'success');
   } catch (err) {
     showMessage(String(err.message || err), 'error');
   } finally {
-    button.disabled = false;
-    button.textContent = 'Generate from voiceover';
+    button.textContent = 'Generate captions';
+    syncTranscribeButtonState();
   }
 }
 
 function checkedValue(root, selector, fallback) {
   return root.querySelector(`${selector}:checked`)?.value || fallback;
+}
+
+function setFormValue(name, value) {
+  const field = projectForm?.elements?.[name];
+  if (field) field.value = value ?? '';
+}
+
+function setEditState(project = null) {
+  const isEditing = Boolean(project?.id || editingProjectId);
+  if (saveBarTitle) saveBarTitle.textContent = isEditing ? 'Editing project' : 'Ready for preview';
+  if (saveBarHint) {
+    saveBarHint.textContent = isEditing
+      ? `Updating ${project?.title || editingProjectId}. Saved media stays in place unless replaced.`
+      : 'Save the project to open the preview studio.';
+  }
+  if (saveProjectBtn) saveProjectBtn.textContent = isEditing ? 'Update Project' : 'Save Project';
+  newProjectBtn?.classList.toggle('hidden', !isEditing);
+}
+
+function showExistingThumbnail(asset) {
+  if (thumbnailPreviewUrl) URL.revokeObjectURL(thumbnailPreviewUrl);
+  thumbnailPreviewUrl = '';
+  if (asset && thumbnailPreview) {
+    thumbnailPreview.src = `/preview-assets/${String(asset).replace(/\\/g, '/')}`;
+    thumbnailPreview.classList.remove('hidden');
+    thumbnailPasteZone?.classList.remove('muted');
+    if (thumbnailPasteHint) thumbnailPasteHint.textContent = 'Saved thumbnail kept unless replaced.';
+    return;
+  }
+  updateThumbnailPreview(null, 'Upload an image or focus here and paste with Ctrl+V.');
+}
+
+function clearMediaInputs() {
+  if (screenRecordingInput) screenRecordingInput.value = '';
+  if (voiceoverInput) voiceoverInput.value = '';
+  const backgroundMusicInput = projectForm?.elements?.backgroundMusic;
+  if (backgroundMusicInput) backgroundMusicInput.value = '';
+  const logoInput = projectForm?.elements?.logo;
+  if (logoInput) logoInput.value = '';
+  if (thumbnailInput) thumbnailInput.value = '';
+  thumbnailClipboardFile = null;
+  syncTranscribeButtonState();
+}
+
+function populateProjectForm(project) {
+  editingProjectId = project.id || '';
+  editingProjectAssets = project.assets && typeof project.assets === 'object' ? project.assets : {};
+  setFormValue('title', project.title || '');
+  setFormValue('productName', project.productName || '');
+  setFormValue('targetUrl', project.targetUrl || '');
+  setFormValue('cta', project.cta || '');
+  setFormValue('format', project.format || 'vertical');
+  setFormValue('template', project.template || 'lifestyle');
+  setFormValue('durationSeconds', project.durationSeconds || 30);
+  setFormValue('thumbnailBumperPosition', project.thumbnailBumper?.position || 'none');
+  setFormValue('thumbnailBumperDuration', project.thumbnailBumper?.durationSeconds || 0.5);
+  setFormValue('thumbnailBumperFit', project.thumbnailBumper?.fit || 'cover');
+  setFormValue('layoutDeviceLift', project.layout?.deviceLift || 0);
+  setFormValue('layoutCtaLift', project.layout?.ctaLift || 0);
+  const type = project.projectType === 'audio-video' ? 'audio-video' : 'screen-promo';
+  projectTypeInputs.forEach((input) => {
+    input.checked = input.value === type;
+  });
+  clearMediaInputs();
+  thumbnailPositionTouched = Boolean(project.thumbnailBumper?.position && project.thumbnailBumper.position !== 'none');
+  showExistingThumbnail(editingProjectAssets.thumbnail);
+
+  const scenes = Array.isArray(project.scenes) ? project.scenes : [];
+  const globalSource = scenes[0] || {};
+  applyGlobalVisualDesign(globalSource);
+  applyGlobalCaptionDesign(globalSource);
+  sceneTableBody.innerHTML = '';
+  selectedSceneId = '';
+  scenes.forEach((scene) => addScene(scene));
+  if (!scenes.length) loadSampleScenes();
+  clipTableBody.innerHTML = '';
+  (Array.isArray(project.clips) ? project.clips : []).forEach((clip) => addClip(clip));
+  normalizeSceneTimeline();
+  updateSceneNumbers();
+  refreshClipPlacementOptions();
+  applyProjectTypeMode({ initial: true });
+  setEditState(project);
+}
+
+async function editProject(projectId, button) {
+  if (!projectId) return;
+  button.disabled = true;
+  button.textContent = 'Loading...';
+  try {
+    const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not load project');
+    populateProjectForm(data.project);
+    showMessage(`Loaded project for editing: ${data.project.title || projectId}`, 'success');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (err) {
+    showMessage(String(err.message || err), 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Edit';
+  }
+}
+
+function startNewProject() {
+  editingProjectId = '';
+  editingProjectAssets = {};
+  projectForm.reset();
+  thumbnailClipboardFile = null;
+  thumbnailPositionTouched = false;
+  showExistingThumbnail('');
+  clipTableBody.innerHTML = '';
+  loadSampleScenes();
+  applyProjectTypeMode({ initial: true });
+  setEditState(null);
+  hideMessage();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 async function loadProjects() {
@@ -1290,6 +1481,7 @@ async function loadProjects() {
       </div>
       <div class="card-actions">
         ${preview}
+        <button class="secondary edit-project-btn" data-id="${project.id}">Edit</button>
         <button class="secondary render-btn" data-id="${project.id}">${escapeHtml(renderButtonLabel)}</button>
         <button class="danger-btn delete-project-btn" data-id="${project.id}">Delete</button>
         ${output}
@@ -1300,6 +1492,9 @@ async function loadProjects() {
 
   projectsList.querySelectorAll('.render-btn').forEach(btn => {
     btn.addEventListener('click', async () => renderProject(btn.dataset.id, btn));
+  });
+  projectsList.querySelectorAll('.edit-project-btn').forEach(btn => {
+    btn.addEventListener('click', async () => editProject(btn.dataset.id, btn));
   });
   projectsList.querySelectorAll('.delete-project-btn').forEach(btn => {
     btn.addEventListener('click', async () => deleteProject(btn.dataset.id, btn));
@@ -1396,13 +1591,13 @@ projectForm.addEventListener('submit', async (event) => {
     return;
   }
   const projectType = selectedProjectType();
-  const voiceoverFile = document.querySelector('#voiceoverInput')?.files?.[0];
+  const voiceoverFile = voiceoverInput?.files?.[0];
   const screenFile = screenRecordingInput?.files?.[0];
-  if (projectType === 'audio-video' && !voiceoverFile) {
+  if (projectType === 'audio-video' && !voiceoverFile && !editingProjectAssets.voiceover) {
     showMessage('Choose an audio track before saving an audio-to-video project.', 'error');
     return;
   }
-  if (projectType === 'screen-promo' && !screenFile) {
+  if (projectType === 'screen-promo' && !screenFile && !editingProjectAssets.screen) {
     showMessage('Choose a screen recording video before saving a screen promo project.', 'error');
     return;
   }
@@ -1414,19 +1609,26 @@ projectForm.addEventListener('submit', async (event) => {
   formData.set('scenes', JSON.stringify(scenes));
   formData.set('clips', JSON.stringify(clips));
   const submitBtn = projectForm.querySelector('button[type="submit"]');
+  const isEditing = Boolean(editingProjectId);
   submitBtn.disabled = true;
-  submitBtn.textContent = 'Saving...';
+  submitBtn.textContent = isEditing ? 'Updating...' : 'Saving...';
   try {
-    const res = await fetch('/api/projects', { method: 'POST', body: formData });
+    const res = await fetch(isEditing ? `/api/projects/${encodeURIComponent(editingProjectId)}` : '/api/projects', {
+      method: isEditing ? 'PATCH' : 'POST',
+      body: formData,
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Could not save project');
-    showMessage(`Project saved: ${data.project.id}\nNext: open Preview or click Render MP4 in the Projects panel.`, 'success');
+    editingProjectId = data.project.id;
+    editingProjectAssets = data.project.assets && typeof data.project.assets === 'object' ? data.project.assets : {};
+    populateProjectForm(data.project);
+    showMessage(`${isEditing ? 'Project updated' : 'Project saved'}: ${data.project.id}\nNext: open Preview or click Render MP4 in the Projects panel.`, 'success');
     await loadProjects();
   } catch (err) {
     showMessage(String(err.message || err), 'error');
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = 'Save Project';
+    submitBtn.textContent = editingProjectId ? 'Update Project' : 'Save Project';
   }
 });
 
@@ -1439,8 +1641,10 @@ document.querySelector('#addClipBtn').addEventListener('click', () => addClip())
 document.querySelector('#loadSampleBtn').addEventListener('click', loadSampleScenes);
 document.querySelector('#reflowScenesBtn')?.addEventListener('click', reflowSceneTimings);
 document.querySelector('#paceScenesBtn')?.addEventListener('click', rebuildScenesByPacing);
-document.querySelector('#transcribeVoiceoverBtn').addEventListener('click', event => generateScenesFromVoiceover(event.target));
+transcribeVoiceoverBtn?.addEventListener('click', event => generateScenesFromVoiceover(event.target));
+voiceoverInput?.addEventListener('change', syncTranscribeButtonState);
 document.querySelector('#refreshProjectsBtn').addEventListener('click', loadProjects);
+newProjectBtn?.addEventListener('click', startNewProject);
 
 initStudioTheme();
 initThumbnailBumperControls();

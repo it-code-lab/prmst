@@ -42,6 +42,37 @@ RENDER_PHASE_RE = re.compile(r"^(Bundling|Copying public dir|Getting composition
 RENDER_THREADS: dict[str, threading.Thread] = {}
 DEFAULT_RENDER_TIMEOUT_MS = 120_000
 DEFAULT_RENDER_CONCURRENCY = 2
+CAPTION_WORD_MAX = 8
+CAPTION_SENTENCE_MAX = 12
+TRANSCRIPTION_LANGUAGES = {
+    "auto": None,
+    "en": "en",
+    "hi": "hi",
+    "ur": "ur",
+    "bn": "bn",
+    "ta": "ta",
+    "te": "te",
+    "mr": "mr",
+    "gu": "gu",
+    "kn": "kn",
+    "ml": "ml",
+    "pa": "pa",
+}
+TRANSCRIPTION_PROMPTS = {
+    "hi": "यह हिंदी ऑडियो है। केवल देवनागरी हिंदी में सटीक लिप्यंतरण करें। रोमन या उर्दू लिपि का उपयोग न करें।",
+    "ur": "یہ اردو آڈیو ہے۔ براہ کرم اردو رسم الخط میں درست متن لکھیں۔",
+}
+TRANSCRIPTION_HOTWORDS = {
+    "hi": "हिंदी देवनागरी कहानी बात पुरानी गांव सुबह रोशनी बाजार बच्चा",
+}
+LATIN_OR_ARABIC_SCRIPT_RE = re.compile(r"[A-Za-z\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]")
+ARABIC_SCRIPT_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]")
+DEVANAGARI_RE = re.compile(r"[\u0900-\u097F]")
+SCRIPT_SENTENCE_END_RE = re.compile(r"[.!?\u0964\u0965]$")
+SCRIPT_WORD_STRIP_RE = re.compile(r"^[\s\"'“”‘’([{<]+|[\s\"'“”‘’.,!?;:\u0964\u0965)\]}>]+$")
+WHISPERX_DEFAULT_ALIGN_MODELS = {
+    "hi": "theainerd/Wav2Vec2-large-xlsr-hindi",
+}
 
 DEFAULT_SCENE_DESIGN: dict[str, Any] = {
     "background": "reading-room",
@@ -360,8 +391,8 @@ def normalize_preview_settings(settings: Any) -> dict[str, Any]:
             "style": style if style in CAPTION_STYLE_PRESETS else "",
             "position": position if position in {"", "auto", "top", "center", "bottom", "device"} else "",
             "groupMode": group_mode if group_mode in {"words", "sentences"} else "words",
-            "wordsPerGroup": min(8, max(1, words_per_group)),
-            "sentencesPerGroup": min(4, max(1, sentences_per_group)),
+            "wordsPerGroup": min(CAPTION_WORD_MAX, max(1, words_per_group)),
+            "sentencesPerGroup": min(CAPTION_SENTENCE_MAX, max(1, sentences_per_group)),
             "highlightMode": highlight_mode if highlight_mode in {"word", "trail", "pulse", "none"} else "word",
             "size": size if size in {"", "compact", "standard", "large", "hero"} else "",
             "boxMode": box_mode if box_mode in {"single", "lines"} else "single",
@@ -918,12 +949,313 @@ def pace_transcript_scenes(
     return [merge_transcript_scene_group(group) for group in groups if group]
 
 
+def normalize_original_script(value: Any) -> str:
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    return re.sub(r"[ \t]+", " ", text)
+
+
+def script_word_weight(word: str) -> float:
+    clean = SCRIPT_WORD_STRIP_RE.sub("", word)
+    base = max(0.7, len(clean) ** 0.72)
+    if SCRIPT_SENTENCE_END_RE.search(word):
+        base += 0.75
+    elif re.search(r"[,;:।]$", word):
+        base += 0.28
+    return base
+
+
+def script_word_tokens(script: str) -> list[str]:
+    return [word for word in re.split(r"\s+", normalize_original_script(script)) if word]
+
+
+def script_words_with_timing(script: str, duration_seconds: float) -> list[dict[str, Any]]:
+    tokens = script_word_tokens(script)
+    if not tokens:
+        return []
+    safe_duration = max(0.5, float(duration_seconds or 0))
+    weights = [script_word_weight(word) for word in tokens]
+    total_weight = sum(weights) or float(len(tokens))
+    cursor = 0.0
+    words: list[dict[str, Any]] = []
+    for token, weight in zip(tokens, weights):
+        start = cursor
+        cursor += safe_duration * (weight / total_weight)
+        words.append({
+            "text": token,
+            "start": round(min(safe_duration, start), 3),
+            "end": round(min(safe_duration, max(start + 0.04, cursor)), 3),
+            "source": "script",
+        })
+    if words:
+        words[-1]["end"] = round(safe_duration, 3)
+    return words
+
+
+def script_chunk_scene(words: list[dict[str, Any]], indexes: list[int]) -> dict[str, Any]:
+    selected_words = [words[index] for index in indexes]
+    narration = " ".join(str(word.get("text") or "") for word in selected_words).strip()
+    return {
+        "start": round(float(selected_words[0].get("start", 0) or 0), 2),
+        "end": round(float(selected_words[-1].get("end", selected_words[0].get("start", 0)) or 0), 2),
+        "caption": caption_text(narration),
+        "narration": narration,
+        "words": selected_words,
+        "wordTimingSource": "script",
+    }
+
+
+def script_to_scenes(
+    script: str,
+    duration_seconds: float,
+    min_scene_seconds: float,
+    target_scene_seconds: float,
+    max_scene_seconds: float,
+) -> list[dict[str, Any]]:
+    words = script_words_with_timing(script, duration_seconds)
+    if not words:
+        raise RuntimeError("Paste the original story/script before generating exact captions.")
+
+    scenes: list[dict[str, Any]] = []
+    chunk: list[int] = []
+    for index, word in enumerate(words):
+        if not chunk:
+            chunk = [index]
+        else:
+            chunk.append(index)
+        start = float(words[chunk[0]].get("start", 0) or 0)
+        end = float(word.get("end", start) or start)
+        duration = max(0.0, end - start)
+        ends_sentence = bool(SCRIPT_SENTENCE_END_RE.search(str(word.get("text") or "")))
+        if duration >= max_scene_seconds or (duration >= target_scene_seconds and ends_sentence):
+            scenes.append(script_chunk_scene(words, chunk))
+            chunk = []
+    if chunk:
+        if scenes:
+            start = float(words[chunk[0]].get("start", 0) or 0)
+            end = float(words[chunk[-1]].get("end", start) or start)
+            if max(0.0, end - start) < min_scene_seconds:
+                scenes[-1]["end"] = round(end, 2)
+                scenes[-1]["words"] = [*scenes[-1].get("words", []), *[words[index] for index in chunk]]
+                scenes[-1]["narration"] = " ".join(word["text"] for word in scenes[-1]["words"]).strip()
+                scenes[-1]["caption"] = caption_text(scenes[-1]["narration"])
+            else:
+                scenes.append(script_chunk_scene(words, chunk))
+        else:
+            scenes.append(script_chunk_scene(words, chunk))
+    return [with_scene_design(scene, index) for index, scene in enumerate(scenes)]
+
+
+def truthy_form_value(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def whisperx_alignment_device() -> str:
+    device = str(os.environ.get("PROMO_STUDIO_WHISPERX_DEVICE") or "cpu").strip().lower()
+    return device if device in {"cpu", "cuda", "mps"} else "cpu"
+
+
+def whisperx_align_model_name(language: str | None) -> str | None:
+    if language:
+        env_key = f"PROMO_STUDIO_WHISPERX_ALIGN_MODEL_{language.upper()}"
+        model_name = str(os.environ.get(env_key) or "").strip()
+        if model_name:
+            return model_name
+        return WHISPERX_DEFAULT_ALIGN_MODELS.get(language)
+    return None
+
+
+def guess_script_language(script: str) -> str | None:
+    if DEVANAGARI_RE.search(script):
+        return "hi"
+    if ARABIC_SCRIPT_RE.search(script):
+        return "ur"
+    if re.search(r"[A-Za-z]", script):
+        return "en"
+    return None
+
+
+def script_alignment_segments(
+    scenes: list[dict[str, Any]],
+    duration_seconds: float,
+) -> list[dict[str, Any]]:
+    segments: list[dict[str, Any]] = []
+    for scene in scenes:
+        text = " ".join(str(scene.get("narration") or scene.get("caption") or "").split())
+        if not text:
+            continue
+        try:
+            start = float(scene.get("start", 0) or 0)
+            end = float(scene.get("end", start) or start)
+        except (TypeError, ValueError):
+            continue
+        segments.append({
+            "start": round(max(0.0, start - 0.75), 3),
+            "end": round(min(duration_seconds, max(start + 0.6, end + 0.75)), 3),
+            "text": text,
+        })
+    return segments
+
+
+def flatten_scene_words(scenes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    words: list[dict[str, Any]] = []
+    for scene in scenes:
+        words.extend([word for word in scene.get("words", []) if isinstance(word, dict)])
+    return words
+
+
+def usable_aligned_words(result: dict[str, Any]) -> list[dict[str, Any]]:
+    words = result.get("word_segments") if isinstance(result, dict) else None
+    if not isinstance(words, list):
+        words = [
+            word
+            for segment in (result.get("segments") or []) if isinstance(segment, dict)
+            for word in (segment.get("words") or []) if isinstance(word, dict)
+        ]
+    aligned: list[dict[str, Any]] = []
+    for word in words or []:
+        try:
+            start = float(word.get("start"))
+            end = float(word.get("end"))
+        except (TypeError, ValueError):
+            continue
+        if end <= start:
+            continue
+        aligned.append({
+            "text": " ".join(str(word.get("word") or word.get("text") or "").split()),
+            "start": round(max(0.0, start), 3),
+            "end": round(max(start + 0.04, end), 3),
+            "score": word.get("score"),
+        })
+    return sorted(aligned, key=lambda item: float(item.get("start", 0) or 0))
+
+
+def normalized_alignment_token(value: Any) -> str:
+    return SCRIPT_WORD_STRIP_RE.sub("", str(value or "")).casefold()
+
+
+def apply_aligned_word_times(
+    scenes: list[dict[str, Any]],
+    aligned_words: list[dict[str, Any]],
+    duration_seconds: float,
+) -> list[dict[str, Any]]:
+    fallback_words = flatten_scene_words(scenes)
+    if not fallback_words:
+        raise RuntimeError("No script words were available for alignment.")
+    coverage = len(aligned_words) / max(1, len(fallback_words))
+    if coverage < 0.8:
+        raise RuntimeError(
+            f"WhisperX aligned {len(aligned_words)} of {len(fallback_words)} script words, which is too incomplete to use."
+        )
+    sequential_only = not any(str(word.get("text") or "").strip() for word in aligned_words)
+
+    cursor = 0
+    rebuilt: list[dict[str, Any]] = []
+    for scene_index, scene in enumerate(scenes):
+        scene_words = [word for word in scene.get("words", []) if isinstance(word, dict)]
+        rebuilt_words: list[dict[str, Any]] = []
+        for fallback_word in scene_words:
+            aligned_word = None
+            if cursor < len(aligned_words):
+                target = normalized_alignment_token(fallback_word.get("text"))
+                candidate = aligned_words[cursor]
+                candidate_text = normalized_alignment_token(candidate.get("text"))
+                if sequential_only or not target or not candidate_text or candidate_text == target:
+                    aligned_word = candidate
+                    cursor += 1
+                else:
+                    for lookahead in range(cursor + 1, min(len(aligned_words), cursor + 6)):
+                        if normalized_alignment_token(aligned_words[lookahead].get("text")) == target:
+                            aligned_word = aligned_words[lookahead]
+                            cursor = lookahead + 1
+                            break
+            if aligned_word:
+                start = float(aligned_word.get("start", fallback_word.get("start", 0)) or 0)
+                end = float(aligned_word.get("end", fallback_word.get("end", start + 0.2)) or start + 0.2)
+            else:
+                start = float(fallback_word.get("start", 0) or 0)
+                end = float(fallback_word.get("end", start + 0.2) or start + 0.2)
+            rebuilt_words.append({
+                "text": str(fallback_word.get("text") or ""),
+                "start": round(min(duration_seconds, max(0.0, start)), 3),
+                "end": round(min(duration_seconds, max(start + 0.04, end)), 3),
+                "source": "whisperx" if aligned_word else "script",
+                **({"score": aligned_word.get("score")} if aligned_word and aligned_word.get("score") is not None else {}),
+            })
+        if not rebuilt_words:
+            continue
+        narration = " ".join(str(word.get("text") or "") for word in rebuilt_words).strip()
+        rebuilt.append(with_scene_design({
+            **scene,
+            "start": round(float(rebuilt_words[0].get("start", 0) or 0), 2),
+            "end": round(float(rebuilt_words[-1].get("end", rebuilt_words[0].get("start", 0)) or 0), 2),
+            "caption": caption_text(narration),
+            "narration": narration,
+            "words": rebuilt_words,
+            "wordTimingSource": "whisperx",
+        }, scene_index))
+    return rebuilt
+
+
+def align_script_with_whisperx(
+    audio_path: Path,
+    script: str,
+    duration_seconds: float,
+    min_scene_seconds: float,
+    target_scene_seconds: float,
+    max_scene_seconds: float,
+    language: str | None,
+) -> list[dict[str, Any]]:
+    language = language or guess_script_language(script)
+    if not language:
+        raise RuntimeError("Choose a caption language before using WhisperX script alignment.")
+    try:
+        import whisperx
+    except ImportError as exc:
+        raise RuntimeError(
+            "WhisperX is not installed. Install it with: pip install whisperx"
+        ) from exc
+
+    scenes = script_to_scenes(
+        script,
+        duration_seconds,
+        min_scene_seconds,
+        target_scene_seconds,
+        max_scene_seconds,
+    )
+    segments = script_alignment_segments(scenes, duration_seconds)
+    if not segments:
+        raise RuntimeError("No script segments were available for WhisperX alignment.")
+
+    device = whisperx_alignment_device()
+    model_name = whisperx_align_model_name(language)
+    model, metadata = whisperx.load_align_model(
+        language_code=language,
+        device=device,
+        model_name=model_name,
+    )
+    audio = whisperx.load_audio(str(audio_path))
+    aligned = whisperx.align(
+        segments,
+        model,
+        metadata,
+        audio,
+        device,
+        return_char_alignments=False,
+    )
+    return apply_aligned_word_times(scenes, usable_aligned_words(aligned), duration_seconds)
+
+
 def transcribe_audio_to_scenes(
     audio_path: Path,
     duration_seconds: float,
     min_scene_seconds: float = DEFAULT_MIN_SCENE_SECONDS,
     target_scene_seconds: float = DEFAULT_TARGET_SCENE_SECONDS,
     max_scene_seconds: float = DEFAULT_MAX_SCENE_SECONDS,
+    language: str | None = None,
 ) -> list[dict[str, Any]]:
     try:
         from faster_whisper import WhisperModel
@@ -932,9 +1264,25 @@ def transcribe_audio_to_scenes(
             "Local transcription requires faster-whisper. Install it with: pip install faster-whisper"
         ) from exc
 
-    model_name = os.environ.get("PROMO_STUDIO_WHISPER_MODEL", "base")
-    model = WhisperModel(model_name, device="cpu", compute_type="int8")
-    segments, _info = model.transcribe(str(audio_path), vad_filter=True, word_timestamps=True)
+    model, model_name = load_whisper_model(WhisperModel, language)
+    transcribe_options: dict[str, Any] = {
+        "vad_filter": True,
+        "word_timestamps": True,
+        "task": "transcribe",
+    }
+    if language:
+        transcribe_options["language"] = language
+        if language in TRANSCRIPTION_PROMPTS:
+            transcribe_options["initial_prompt"] = TRANSCRIPTION_PROMPTS[language]
+        if language in TRANSCRIPTION_HOTWORDS:
+            transcribe_options["hotwords"] = TRANSCRIPTION_HOTWORDS[language]
+    if language == "hi":
+        transcribe_options.update({
+            "condition_on_previous_text": False,
+            "temperature": 0.0,
+            "suppress_tokens": hindi_devanagari_suppress_tokens(model),
+        })
+    segments, _info = model.transcribe(str(audio_path), **transcribe_options)
 
     scenes: list[dict[str, Any]] = []
     for segment in segments:
@@ -967,6 +1315,70 @@ def transcribe_audio_to_scenes(
         raise RuntimeError("No speech was detected in the uploaded audio.")
     scenes = pace_transcript_scenes(scenes, min_scene_seconds, target_scene_seconds, max_scene_seconds)
     return [with_scene_design(scene, index) for index, scene in enumerate(scenes)]
+
+
+def whisper_model_candidates(language: str | None) -> list[str]:
+    names: list[str] = []
+    if language == "hi":
+        names.append(os.environ.get("PROMO_STUDIO_WHISPER_HI_MODEL", "small"))
+    names.append(os.environ.get("PROMO_STUDIO_WHISPER_MODEL", "base"))
+    unique: list[str] = []
+    for name in names:
+        model_name = str(name or "").strip()
+        if model_name and model_name not in unique:
+            unique.append(model_name)
+    return unique or ["base"]
+
+
+def load_whisper_model(model_class: Any, language: str | None) -> tuple[Any, str]:
+    errors: list[str] = []
+    for model_name in whisper_model_candidates(language):
+        try:
+            return model_class(model_name, device="cpu", compute_type="int8"), model_name
+        except Exception as exc:
+            errors.append(f"{model_name}: {exc}")
+    raise RuntimeError("Could not load a Whisper model. " + " | ".join(errors))
+
+
+def hindi_devanagari_suppress_tokens(model: Any) -> list[int]:
+    token_ids = {-1}
+    tokenizer = getattr(model, "hf_tokenizer", None)
+    get_vocab = getattr(tokenizer, "get_vocab", None)
+    if not callable(get_vocab):
+        return sorted(token_ids)
+    try:
+        vocab = get_vocab()
+    except Exception:
+        return sorted(token_ids)
+    for token, token_id in vocab.items():
+        token_text = str(token)
+        if token_text.startswith("<|"):
+            continue
+        if LATIN_OR_ARABIC_SCRIPT_RE.search(token_text):
+            try:
+                token_ids.add(int(token_id))
+            except (TypeError, ValueError):
+                continue
+    return sorted(token_ids)
+
+
+def normalize_transcription_language(value: Any) -> str | None:
+    key = str(value or "auto").strip().lower()
+    return TRANSCRIPTION_LANGUAGES.get(key)
+
+
+def transcription_script_warning(scenes: list[dict[str, Any]], language: str | None) -> str | None:
+    if language != "hi":
+        return None
+    text = " ".join(str(scene.get("narration") or scene.get("caption") or "") for scene in scenes)
+    devanagari_count = len(DEVANAGARI_RE.findall(text))
+    mixed_script_count = len(LATIN_OR_ARABIC_SCRIPT_RE.findall(text))
+    if mixed_script_count and mixed_script_count / max(1, devanagari_count + mixed_script_count) > 0.12:
+        return (
+            "Hindi transcription still contains Roman or Urdu-script text. "
+            "For cleaner Hindi, set PROMO_STUDIO_WHISPER_HI_MODEL=medium before starting the app."
+        )
+    return None
 
 
 @app.route("/")
@@ -1031,6 +1443,7 @@ def list_projects():
                 "status": data.get("status", "draft"),
                 "render": data.get("render") if isinstance(data.get("render"), dict) else {},
                 "createdAt": data.get("createdAt"),
+                "updatedAt": data.get("updatedAt"),
                 "outputUrl": data.get("outputUrl"),
             })
         except Exception:
@@ -1038,151 +1451,203 @@ def list_projects():
     return jsonify({"projects": projects})
 
 
+def uploaded_asset(field_name: str, public_dir: Path, project_id: str, prefix: str, allowed: set[str], existing_asset: Any = None) -> str | None:
+    filename = save_upload(request.files.get(field_name), public_dir, prefix, allowed)
+    if filename:
+        return f"projects/{project_id}/{filename}"
+    return str(existing_asset) if existing_asset else None
+
+
+def public_asset_path(asset: Any) -> Path | None:
+    asset_text = str(asset or "").strip()
+    if not asset_text:
+        return None
+    return REMOTION_PUBLIC_DIR / asset_text
+
+
+def project_payload_from_form(project_id: str, existing_project: dict[str, Any] | None = None) -> dict[str, Any]:
+    existing_assets = (
+        dict(existing_project.get("assets", {}))
+        if isinstance(existing_project, dict) and isinstance(existing_project.get("assets"), dict)
+        else {}
+    )
+    now = datetime.now().isoformat(timespec="seconds")
+    title = request.form.get("title", "Untitled Promo").strip() or "Untitled Promo"
+    product_name = request.form.get("productName", title).strip() or title
+    target_url = request.form.get("targetUrl", "").strip()
+    cta = request.form.get("cta", "Try it free").strip() or "Try it free"
+    project_type = request.form.get("projectType", "screen-promo")
+    if project_type not in {"screen-promo", "audio-video"}:
+        project_type = "screen-promo"
+    video_format = request.form.get("format", "vertical")
+    template_name = request.form.get("template", "lifestyle")
+    requested_duration_seconds = bounded_duration(float(request.form.get("durationSeconds", "30") or "30"))
+    duration_seconds = requested_duration_seconds
+
+    try:
+        scenes = json.loads(request.form.get("scenes", "[]"))
+    except json.JSONDecodeError as exc:
+        raise ValueError("Scenes JSON is invalid.") from exc
+    try:
+        clip_rows = json.loads(request.form.get("clips", "[]"))
+    except json.JSONDecodeError as exc:
+        raise ValueError("Clips JSON is invalid.") from exc
+
+    if not scenes:
+        scenes = [
+            {"start": 0, "end": 5, "caption": f"{product_name}\njust got smarter", "narration": f"{product_name} just got smarter."},
+            {"start": 5, "end": 11, "caption": "show the real product experience", "narration": "Show the real product experience from your own screen recording."},
+            {"start": 11, "end": 18, "caption": "highlight the moments that matter", "narration": "Highlight the moments that matter with polished captions and motion."},
+            {"start": 18, "end": 24, "caption": "turn walkthroughs into ads", "narration": "Turn everyday walkthroughs into polished advertisement videos."},
+            {"start": 24, "end": 30, "caption": cta, "narration": cta},
+        ]
+
+    public_dir = REMOTION_PUBLIC_PROJECTS / project_id
+    public_dir.mkdir(parents=True, exist_ok=True)
+    screen_asset = uploaded_asset("screenRecording", public_dir, project_id, "screen", ALLOWED_VIDEO_EXTENSIONS, existing_assets.get("screen"))
+    voiceover_asset = uploaded_asset("voiceover", public_dir, project_id, "voiceover", ALLOWED_AUDIO_EXTENSIONS, existing_assets.get("voiceover"))
+    if project_type == "screen-promo" and not screen_asset:
+        raise ValueError("Please upload a screen recording video.")
+    if project_type == "audio-video" and not voiceover_asset:
+        raise ValueError("Please upload an audio track for audio-to-video projects.")
+
+    screen_path = public_asset_path(screen_asset)
+    voiceover_path = public_asset_path(voiceover_asset)
+    screen_info = probe_media_info(screen_path) if screen_path and screen_path.exists() else None
+    voiceover_duration = probe_media_duration(voiceover_path) if voiceover_path and voiceover_path.exists() else None
+    if voiceover_duration:
+        duration_seconds = bounded_duration(voiceover_duration)
+
+    scenes = ensure_scene_coverage(scenes, duration_seconds, product_name, cta)
+    scenes = [
+        normalize_audio_video_scene(scene, index, bool(screen_asset))
+        if project_type == "audio-video"
+        else with_scene_design(scene, index)
+        for index, scene in enumerate(scenes)
+    ]
+
+    background_music_asset = uploaded_asset("backgroundMusic", public_dir, project_id, "background-music", ALLOWED_AUDIO_EXTENSIONS, existing_assets.get("backgroundMusic"))
+    logo_asset = uploaded_asset("logo", public_dir, project_id, "logo", ALLOWED_IMAGE_EXTENSIONS, existing_assets.get("logo"))
+    thumbnail_asset = uploaded_asset("thumbnailImage", public_dir, project_id, "thumbnail", ALLOWED_IMAGE_EXTENSIONS, existing_assets.get("thumbnail"))
+    thumbnail_bumper = normalize_thumbnail_bumper({
+        "position": request.form.get("thumbnailBumperPosition", "none"),
+        "durationSeconds": request.form.get("thumbnailBumperDuration", 0.5),
+        "fit": request.form.get("thumbnailBumperFit", "cover"),
+    }, thumbnail_asset)
+    layout = normalize_layout_settings({
+        "deviceLift": request.form.get("layoutDeviceLift", 0),
+        "ctaLift": request.form.get("layoutCtaLift", 0),
+    })
+
+    clips: list[dict[str, Any]] = []
+    if isinstance(clip_rows, list):
+        clips_dir = public_dir / "clips"
+        for index, clip in enumerate(clip_rows, start=1):
+            if not isinstance(clip, dict):
+                continue
+            try:
+                start = max(0.0, float(clip.get("start", 0) or 0))
+                end = max(start, float(clip.get("end", 0) or 0))
+            except (TypeError, ValueError):
+                continue
+            if end <= start:
+                continue
+            file_field = str(clip.get("fileField") or "")
+            clip_file = request.files.get(file_field)
+            if clip_file and clip_file.filename:
+                clip_filename = save_clip_upload(clip_file, clips_dir, index)
+                asset = f"projects/{project_id}/clips/{clip_filename}"
+                label = str(clip.get("label") or clip_file.filename or "Clip").strip()[:120]
+            else:
+                asset = str(clip.get("asset") or "").strip()
+                if not asset.startswith(f"projects/{project_id}/clips/"):
+                    continue
+                label = str(clip.get("label") or "Clip").strip()[:120]
+            mode = str(clip.get("mode") or "device-screen")
+            clips.append({
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "mode": mode if mode in CLIP_MODES else "device-screen",
+                "label": label,
+                "asset": asset,
+                "durationSeconds": probe_media_duration(REMOTION_PUBLIC_DIR / asset),
+            })
+
+    duration_seconds = bounded_duration(max(duration_seconds, scene_end_seconds(scenes), clip_end_seconds(clips)))
+    scenes = ensure_scene_coverage(scenes, duration_seconds, product_name, cta)
+    if project_type == "audio-video":
+        scenes = [normalize_audio_video_scene(scene, index, bool(screen_asset)) for index, scene in enumerate(scenes)]
+
+    return {
+        "id": project_id,
+        "projectType": project_type,
+        "title": title,
+        "productName": product_name,
+        "targetUrl": target_url,
+        "cta": cta,
+        "format": video_format,
+        "template": template_name,
+        "durationSeconds": duration_seconds,
+        "fps": int(existing_project.get("fps", 30)) if isinstance(existing_project, dict) else 30,
+        "status": "draft",
+        "createdAt": existing_project.get("createdAt", now) if isinstance(existing_project, dict) else now,
+        "updatedAt": now,
+        "outputUrl": None,
+        "assets": {
+            "screen": screen_asset,
+            "screenDurationSeconds": screen_info.get("duration") if screen_info else None,
+            "screenWidth": screen_info.get("width") if screen_info else None,
+            "screenHeight": screen_info.get("height") if screen_info else None,
+            "voiceover": voiceover_asset,
+            "voiceoverDurationSeconds": voiceover_duration,
+            "backgroundMusic": background_music_asset,
+            "logo": logo_asset,
+            "thumbnail": thumbnail_asset,
+        },
+        "scenes": scenes,
+        "clips": normalize_clips(clips),
+        "thumbnailBumper": thumbnail_bumper,
+        "layout": layout,
+        "previewSettings": normalize_preview_settings(existing_project.get("previewSettings") if isinstance(existing_project, dict) else None),
+        "render": {
+            "lastStartedAt": None,
+            "lastFinishedAt": None,
+            "lastError": None,
+            "logFile": None,
+            "progress": 0,
+            "phase": "idle",
+        },
+    }
+
+
 @app.post("/api/projects")
 def create_project():
     try:
         title = request.form.get("title", "Untitled Promo").strip() or "Untitled Promo"
-        product_name = request.form.get("productName", title).strip() or title
-        target_url = request.form.get("targetUrl", "").strip()
-        cta = request.form.get("cta", "Try it free").strip() or "Try it free"
-        project_type = request.form.get("projectType", "screen-promo")
-        if project_type not in {"screen-promo", "audio-video"}:
-            project_type = "screen-promo"
-        video_format = request.form.get("format", "vertical")
-        template_name = request.form.get("template", "lifestyle")
-        requested_duration_seconds = bounded_duration(float(request.form.get("durationSeconds", "30") or "30"))
-        duration_seconds = requested_duration_seconds
-
-        try:
-            scenes = json.loads(request.form.get("scenes", "[]"))
-        except json.JSONDecodeError:
-            return jsonify({"error": "Scenes JSON is invalid."}), 400
-        try:
-            clip_rows = json.loads(request.form.get("clips", "[]"))
-        except json.JSONDecodeError:
-            return jsonify({"error": "Clips JSON is invalid."}), 400
-
-        if not scenes:
-            scenes = [
-                {"start": 0, "end": 5, "caption": f"{product_name}\njust got smarter", "narration": f"{product_name} just got smarter."},
-                {"start": 5, "end": 11, "caption": "show the real product experience", "narration": "Show the real product experience from your own screen recording."},
-                {"start": 11, "end": 18, "caption": "highlight the moments that matter", "narration": "Highlight the moments that matter with polished captions and motion."},
-                {"start": 18, "end": 24, "caption": "turn walkthroughs into ads", "narration": "Turn everyday walkthroughs into polished advertisement videos."},
-                {"start": 24, "end": 30, "caption": cta, "narration": cta},
-            ]
-        screen_recording = request.files.get("screenRecording")
-        voiceover_upload = request.files.get("voiceover")
-        if project_type == "screen-promo" and (not screen_recording or not screen_recording.filename):
-            return jsonify({"error": "Please upload a screen recording video."}), 400
-        if project_type == "audio-video" and (not voiceover_upload or not voiceover_upload.filename):
-            return jsonify({"error": "Please upload an audio track for audio-to-video projects."}), 400
-
         project_id = f"{now_id()}_{slugify(title)[:60] or 'promo'}"
-        project_dir = PROJECTS_DIR / project_id
-        public_dir = REMOTION_PUBLIC_PROJECTS / project_id
-        project_dir.mkdir(parents=True, exist_ok=True)
-        public_dir.mkdir(parents=True, exist_ok=True)
-
-        screen_filename = save_upload(screen_recording, public_dir, "screen", ALLOWED_VIDEO_EXTENSIONS)
-        screen_info = probe_media_info(public_dir / screen_filename) if screen_filename else None
-        voiceover_filename = save_upload(voiceover_upload, public_dir, "voiceover", ALLOWED_AUDIO_EXTENSIONS)
-        voiceover_duration = probe_media_duration(public_dir / voiceover_filename) if voiceover_filename else None
-        if voiceover_duration:
-            duration_seconds = bounded_duration(voiceover_duration)
-        scenes = ensure_scene_coverage(scenes, duration_seconds, product_name, cta)
-        scenes = [
-            normalize_audio_video_scene(scene, index, bool(screen_filename))
-            if project_type == "audio-video"
-            else with_scene_design(scene, index)
-            for index, scene in enumerate(scenes)
-        ]
-        background_music_filename = save_upload(request.files.get("backgroundMusic"), public_dir, "background-music", ALLOWED_AUDIO_EXTENSIONS)
-        logo_filename = save_upload(request.files.get("logo"), public_dir, "logo", ALLOWED_IMAGE_EXTENSIONS)
-        thumbnail_filename = save_upload(request.files.get("thumbnailImage"), public_dir, "thumbnail", ALLOWED_IMAGE_EXTENSIONS)
-        thumbnail_bumper = normalize_thumbnail_bumper({
-            "position": request.form.get("thumbnailBumperPosition", "none"),
-            "durationSeconds": request.form.get("thumbnailBumperDuration", 0.5),
-            "fit": request.form.get("thumbnailBumperFit", "cover"),
-        }, f"projects/{project_id}/{thumbnail_filename}" if thumbnail_filename else None)
-        layout = normalize_layout_settings({
-            "deviceLift": request.form.get("layoutDeviceLift", 0),
-            "ctaLift": request.form.get("layoutCtaLift", 0),
-        })
-        clips: list[dict[str, Any]] = []
-        if isinstance(clip_rows, list):
-            clips_dir = public_dir / "clips"
-            for index, clip in enumerate(clip_rows, start=1):
-                if not isinstance(clip, dict):
-                    continue
-                file_field = str(clip.get("fileField") or "")
-                clip_file = request.files.get(file_field)
-                if not clip_file or not clip_file.filename:
-                    continue
-                clip_filename = save_clip_upload(clip_file, clips_dir, index)
-                try:
-                    start = max(0.0, float(clip.get("start", 0) or 0))
-                    end = max(start, float(clip.get("end", 0) or 0))
-                except (TypeError, ValueError):
-                    continue
-                if end <= start:
-                    continue
-                mode = str(clip.get("mode") or "device-screen")
-                asset = f"projects/{project_id}/clips/{clip_filename}"
-                clips.append({
-                    "start": round(start, 3),
-                    "end": round(end, 3),
-                    "mode": mode if mode in CLIP_MODES else "device-screen",
-                    "label": str(clip.get("label") or clip_file.filename or "Clip").strip()[:120],
-                    "asset": asset,
-                    "durationSeconds": probe_media_duration(REMOTION_PUBLIC_DIR / asset),
-                })
-        duration_seconds = bounded_duration(max(duration_seconds, scene_end_seconds(scenes), clip_end_seconds(clips)))
-        scenes = ensure_scene_coverage(scenes, duration_seconds, product_name, cta)
-        if project_type == "audio-video":
-            scenes = [normalize_audio_video_scene(scene, index, bool(screen_filename)) for index, scene in enumerate(scenes)]
-
-        project: dict[str, Any] = {
-            "id": project_id,
-            "projectType": project_type,
-            "title": title,
-            "productName": product_name,
-            "targetUrl": target_url,
-            "cta": cta,
-            "format": video_format,
-            "template": template_name,
-            "durationSeconds": duration_seconds,
-            "fps": 30,
-            "status": "draft",
-            "createdAt": datetime.now().isoformat(timespec="seconds"),
-            "assets": {
-                "screen": f"projects/{project_id}/{screen_filename}" if screen_filename else None,
-                "screenDurationSeconds": screen_info.get("duration") if screen_info else None,
-                "screenWidth": screen_info.get("width") if screen_info else None,
-                "screenHeight": screen_info.get("height") if screen_info else None,
-                "voiceover": f"projects/{project_id}/{voiceover_filename}" if voiceover_filename else None,
-                "voiceoverDurationSeconds": voiceover_duration,
-                "backgroundMusic": f"projects/{project_id}/{background_music_filename}" if background_music_filename else None,
-                "logo": f"projects/{project_id}/{logo_filename}" if logo_filename else None,
-                "thumbnail": f"projects/{project_id}/{thumbnail_filename}" if thumbnail_filename else None,
-            },
-            "scenes": scenes,
-            "clips": normalize_clips(clips),
-            "thumbnailBumper": thumbnail_bumper,
-            "layout": layout,
-            "previewSettings": normalize_preview_settings(None),
-            "render": {
-                "lastStartedAt": None,
-                "lastFinishedAt": None,
-                "lastError": None,
-                "logFile": None,
-            },
-        }
+        project = project_payload_from_form(project_id)
         write_project(project_id, project)
         return jsonify({"project": project})
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception as exc:
         return jsonify({"error": f"Could not create project: {exc}"}), 500
+
+
+@app.patch("/api/projects/<project_id>")
+def update_project(project_id: str):
+    try:
+        existing_project = read_project(project_id)
+    except FileNotFoundError:
+        return jsonify({"error": "Project not found."}), 404
+    try:
+        project = project_payload_from_form(project_id, existing_project)
+        write_project(project_id, project)
+        return jsonify({"project": project})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": f"Could not update project: {exc}"}), 500
 
 
 @app.get("/api/projects/<project_id>")
@@ -1233,6 +1698,9 @@ def transcribe_voiceover():
         requested_duration_seconds = float(request.form.get("durationSeconds", "30") or 30)
     except ValueError:
         requested_duration_seconds = 30
+    language = normalize_transcription_language(request.form.get("transcriptionLanguage"))
+    original_script = normalize_original_script(request.form.get("originalScript"))
+    use_whisperx_alignment = truthy_form_value(request.form.get("useWhisperxAlignment"), True)
 
     temp_dir = PROJECTS_DIR / "_transcription_uploads"
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -1244,14 +1712,56 @@ def transcribe_voiceover():
         duration_seconds = probe_media_duration(temp_path) or requested_duration_seconds
         duration_seconds = min(MAX_PROJECT_DURATION_SECONDS, max(5, float(duration_seconds)))
         min_scene_seconds, target_scene_seconds, max_scene_seconds = parse_scene_pacing(request.form)
-        scenes = transcribe_audio_to_scenes(
-            temp_path,
-            duration_seconds,
-            min_scene_seconds,
-            target_scene_seconds,
-            max_scene_seconds,
-        )
-        return jsonify({"scenes": scenes, "durationSeconds": round(duration_seconds, 2)})
+        if original_script:
+            warning = None
+            transcript_source = "script"
+            if use_whisperx_alignment:
+                try:
+                    scenes = align_script_with_whisperx(
+                        temp_path,
+                        original_script,
+                        duration_seconds,
+                        min_scene_seconds,
+                        target_scene_seconds,
+                        max_scene_seconds,
+                        language,
+                    )
+                    transcript_source = "script-whisperx"
+                except RuntimeError as exc:
+                    scenes = script_to_scenes(
+                        original_script,
+                        duration_seconds,
+                        min_scene_seconds,
+                        target_scene_seconds,
+                        max_scene_seconds,
+                    )
+                    warning = f"{exc} Used estimated script timing instead."
+            else:
+                scenes = script_to_scenes(
+                    original_script,
+                    duration_seconds,
+                    min_scene_seconds,
+                    target_scene_seconds,
+                    max_scene_seconds,
+                )
+        else:
+            scenes = transcribe_audio_to_scenes(
+                temp_path,
+                duration_seconds,
+                min_scene_seconds,
+                target_scene_seconds,
+                max_scene_seconds,
+                language,
+            )
+            warning = transcription_script_warning(scenes, language)
+            transcript_source = "voiceover"
+        return jsonify({
+            "scenes": scenes,
+            "durationSeconds": round(duration_seconds, 2),
+            "transcriptionLanguage": language or "auto",
+            "transcriptSource": transcript_source,
+            "warning": warning,
+        })
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 501
     except Exception as exc:

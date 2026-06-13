@@ -55,6 +55,7 @@ type CaptionWord = {
   start: number;
   end: number;
   source?: 'voiceover' | 'estimated';
+  sentenceBreak?: boolean;
 };
 
 type TimelineClip = {
@@ -270,6 +271,8 @@ const captionFontStacks: Record<string, string> = {
   Tahoma: 'Tahoma, Geneva, sans-serif',
   'Comic Sans MS': 'Comic Sans MS, Comic Sans, cursive',
 };
+const CAPTION_WORD_MAX = 8;
+const CAPTION_SENTENCE_MAX = 12;
 
 export const PromoVideo: React.FC<PromoProps> = (props) => {
   const frame = useCurrentFrame();
@@ -392,7 +395,7 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
 
 const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc: string | null; musicSrc: string | null; logoSrc: string | null; thumbnailSrc: string | null; resolvedThumbnailBumper: ResolvedThumbnailBumper | null; layoutSettings: Required<LayoutSettings>}> = (props) => {
   const frame = useCurrentFrame();
-  const {fps} = useVideoConfig();
+  const {fps, width} = useVideoConfig();
   const playbackRate = clampNumber(props.previewSettings?.playbackRate, 0.75, 1.5, 1);
   const projectSeconds = (frame / fps) * playbackRate;
   const seconds = contentSecondsFromProjectTime(projectSeconds, props.durationSeconds, props.resolvedThumbnailBumper);
@@ -405,6 +408,7 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
   const ctaVisible = seconds >= ctaStartSeconds;
   const progress = seconds / Math.max(1, props.durationSeconds);
   const bgScale = interpolate(progress, [0, 1], [1.02, 1.08], {extrapolateRight: 'clamp'});
+  const allCaptionWords = React.useMemo(() => timelineCaptionWords(props.scenes), [props.scenes]);
 
   const captionFrame = Math.max(0, timelineFrame - Math.round((scene?.start || 0) * fps));
   const captionIn = spring({frame: captionFrame, fps, config: {damping: 18, stiffness: 170}});
@@ -487,9 +491,12 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
         <CaptionChip
           caption={scene?.caption || props.title}
           isLandscape={isLandscape}
+          format={props.format}
+          renderWidth={width}
           scene={scene}
           seconds={seconds}
           previewSettings={props.previewSettings}
+          timelineWords={allCaptionWords}
         />
       </div>
 
@@ -511,9 +518,9 @@ function captionPositionStyle(scene: Scene & typeof sceneDefaults, isLandscape: 
 
   if (isLandscape) {
     if (position === 'device') return {top: '14%', left: '48%', right: '8%', bottom: 'auto'};
-    if (position === 'center') return {top: '50%', left: '8%', right: '54%', bottom: 'auto'};
-    if (position === 'bottom') return {top: 'auto', bottom: '10%', left: '8%', right: '54%'};
-    return {top: '7%', left: '8%', right: '58%', bottom: 'auto'};
+    if (position === 'center') return {top: '50%', left: '7%', right: '7%', bottom: 'auto'};
+    if (position === 'bottom') return {top: 'auto', bottom: '10%', left: '7%', right: '7%'};
+    return {top: '7%', left: '7%', right: '7%', bottom: 'auto'};
   }
 
   if (position === 'center') return {top: '42%', left: '7%', right: '7%', bottom: 'auto'};
@@ -524,7 +531,8 @@ function captionPositionStyle(scene: Scene & typeof sceneDefaults, isLandscape: 
 
 function captionJustify(scene: Scene & typeof sceneDefaults, isLandscape: boolean): React.CSSProperties['justifyContent'] {
   if (scene.captionStyle === 'device-callout') return 'flex-start';
-  return isLandscape ? 'flex-start' : 'center';
+  if (isLandscape && scene.captionPosition === 'device') return 'flex-start';
+  return 'center';
 }
 
 function captionTransform(scene: Scene & typeof sceneDefaults, captionIn: number): string {
@@ -541,12 +549,23 @@ function captionTransform(scene: Scene & typeof sceneDefaults, captionIn: number
   return `translateY(${interpolate(captionIn, [0, 1], [16 * amount, 0])}px) scale(${interpolate(captionIn, [0, 1], [0.97, 1])})`;
 }
 
-function captionFontSize(scene: Scene & typeof sceneDefaults, isLandscape: boolean): number {
-  const base = isLandscape ? 38 : 48;
-  if (scene.captionSize === 'compact') return base * 0.78;
-  if (scene.captionSize === 'large') return base * 1.18;
-  if (scene.captionSize === 'hero') return base * 1.42;
-  return base;
+function captionPreviewStageWidth(format: PromoProps['format']): number {
+  return format === 'landscape' ? 860 : format === 'square' ? 620 : 430;
+}
+
+function captionRenderScale(format: PromoProps['format'], renderWidth: number): number {
+  return renderWidth / captionPreviewStageWidth(format);
+}
+
+function captionFontSize(scene: Scene & typeof sceneDefaults, format: PromoProps['format'], renderWidth: number, fontSizePercent: unknown): number {
+  const previewBase = {
+    compact: 19,
+    standard: 24,
+    large: 31,
+    hero: 42,
+  }[scene.captionSize || 'standard'] || 24;
+  const previewFontSize = Math.round(previewBase * (clampNumber(fontSizePercent, 70, 180, 100) / 100));
+  return previewFontSize * captionRenderScale(format, renderWidth);
 }
 
 function applyPreviewCaptionSettings(scene: Scene & typeof sceneDefaults, settings?: PreviewSettings): Scene & typeof sceneDefaults {
@@ -565,11 +584,11 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   return Number.isFinite(numberValue) ? Math.min(max, Math.max(min, numberValue)) : fallback;
 }
 
-const CaptionChip: React.FC<{caption: string; isLandscape: boolean; scene: Scene & typeof sceneDefaults; seconds?: number; previewSettings?: PreviewSettings}> = ({caption, isLandscape, scene, seconds = 0, previewSettings}) => {
+const CaptionChip: React.FC<{caption: string; isLandscape: boolean; format: PromoProps['format']; renderWidth: number; scene: Scene & typeof sceneDefaults; seconds?: number; previewSettings?: PreviewSettings; timelineWords?: CaptionWord[]}> = ({caption, isLandscape, format, renderWidth, scene, seconds = 0, previewSettings, timelineWords = []}) => {
   const captions = previewSettings?.captions || {};
   const groupMode = captions.groupMode === 'sentences' ? 'sentences' : 'words';
-  const wordsPerGroup = clampNumber(captions.wordsPerGroup, 1, 8, 3);
-  const sentencesPerGroup = clampNumber(captions.sentencesPerGroup, 1, 4, 1);
+  const wordsPerGroup = clampNumber(captions.wordsPerGroup, 1, CAPTION_WORD_MAX, 3);
+  const sentencesPerGroup = clampNumber(captions.sentencesPerGroup, 1, CAPTION_SENTENCE_MAX, 1);
   const highlightMode = captions.highlightMode || 'word';
   const boxMode = captions.boxMode === 'lines' ? 'lines' : 'single';
   const paragraphAlign = normalizeParagraphAlign(captions.paragraphAlign);
@@ -578,7 +597,7 @@ const CaptionChip: React.FC<{caption: string; isLandscape: boolean; scene: Scene
   const fontWeight = captions.fontWeight || undefined;
   const activeStyle = captions.activeStyle || 'color';
   const activeColor = safeCaptionHexColor(captions.activeColor, '#facc15');
-  const timedWords = sceneCaptionWords(scene, caption);
+  const timedWords = groupMode === 'sentences' && timelineWords.length ? timelineWords : sceneCaptionWords(scene, caption);
   const grouped = groupMode === 'sentences'
     ? captionSentenceGroup(timedWords, scene, seconds, sentencesPerGroup)
     : captionWordGroup(timedWords, scene, seconds, wordsPerGroup);
@@ -589,26 +608,32 @@ const CaptionChip: React.FC<{caption: string; isLandscape: boolean; scene: Scene
   const style = scene.captionStyle || 'white-chip';
   const isGlass = style === 'glass-card';
   const isBottom = style === 'bold-bottom';
-  const fontSize = captionFontSize(scene, isLandscape) * (clampNumber(captions.fontSizePercent, 70, 180, 100) / 100);
+  const renderScale = captionRenderScale(format, renderWidth);
+  const fontSize = captionFontSize(scene, format, renderWidth, captions.fontSizePercent);
+  const captionLaneWidth = renderWidth * 0.86;
+  const captionGap = boxMode === 'single' ? 0 : (style === 'kinetic-stack' ? 8 : style === 'editorial-card' ? 7 : 5) * renderScale;
   return (
     <div
       style={{
         display: 'inline-flex',
         flexDirection: 'column',
         alignItems: style === 'device-callout' ? 'flex-start' : 'center',
-        gap: boxMode === 'single' ? 0 : (style === 'kinetic-stack' ? 10 : 5),
-        maxWidth: isLandscape ? 560 : 900,
+        gap: captionGap,
+        maxWidth: isLandscape ? captionLaneWidth : Math.min(900, captionLaneWidth),
       }}
     >
       {(lines.length ? lines : [[{text: caption, index: 0, active: false, past: false, progress: 0}]]).map((line, index) => (
         <div
           key={`${line.map((token) => token.text).join(' ')}-${index}`}
-          style={captionLineStyle(style, index, fontSize, isLandscape, {paragraphAlign, fontFamily, fontColor, fontWeight})}
+          style={captionLineStyle(style, index, fontSize, renderScale, {paragraphAlign, fontFamily, fontColor, fontWeight})}
         >
-          {line.map((token) => (
-            <span key={`${token.text}-${token.index}`} style={captionWordStyle(token, style, highlightMode, activeStyle, activeColor)}>
-              {token.text}
-            </span>
+          {line.map((token, tokenIndex) => (
+            <React.Fragment key={`${token.text}-${token.index}`}>
+              <span style={captionWordStyle(token, style, highlightMode, activeStyle, activeColor)}>
+                {token.text}
+              </span>
+              {tokenIndex < line.length - 1 ? ' ' : null}
+            </React.Fragment>
           ))}
         </div>
       ))}
@@ -654,6 +679,17 @@ function sceneCaptionWords(scene: Scene & typeof sceneDefaults, fallbackCaption:
   })).filter((word) => word.text);
 }
 
+function timelineCaptionWords(scenes: Scene[]): CaptionWord[] {
+  return scenes.flatMap((scene) => {
+    const designed = {...sceneDefaults, ...scene};
+    const words = sceneCaptionWords(designed, scene.caption || scene.narration || '');
+    return words.map((word, index) => ({
+      ...word,
+      sentenceBreak: index === words.length - 1,
+    }));
+  });
+}
+
 function cleanCaptionWord(word: unknown): string {
   return String(word || '').replace(/\s+/g, ' ').trim();
 }
@@ -684,7 +720,7 @@ function captionSentenceGroup(words: CaptionWord[], scene: Scene & typeof sceneD
   const groups = sentenceIndexGroups(words);
   const foundSentenceIndex = groups.findIndex((indexes) => indexes.includes(activeIndex));
   const activeSentenceIndex = foundSentenceIndex === -1 ? 0 : foundSentenceIndex;
-  const groupSize = Math.round(sentencesPerGroup);
+  const groupSize = Math.max(1, Math.round(sentencesPerGroup));
   const sentenceStart = Math.floor(activeSentenceIndex / groupSize) * groupSize;
   const visibleIndexes = groups.slice(sentenceStart, sentenceStart + groupSize).flat();
   return {
@@ -698,7 +734,7 @@ function sentenceIndexGroups(words: CaptionWord[]): number[][] {
   let current: number[] = [];
   words.forEach((word, index) => {
     current.push(index);
-    if (/[.!?\u0964]$/.test(word.text) || current.length >= 18) {
+    if (/[.!?\u0964]$/.test(word.text) || word.sentenceBreak) {
       groups.push(current);
       current = [];
     }
@@ -770,7 +806,7 @@ type CaptionTypography = {
   fontWeight?: string;
 };
 
-function captionLineStyle(style: NonNullable<Scene['captionStyle']>, index: number, fontSize: number, isLandscape: boolean, typography: CaptionTypography): React.CSSProperties {
+function captionLineStyle(style: NonNullable<Scene['captionStyle']>, index: number, fontSize: number, renderScale: number, typography: CaptionTypography): React.CSSProperties {
   const justifyContent = typography.paragraphAlign === 'left'
     ? 'flex-start'
     : typography.paragraphAlign === 'right'
@@ -778,6 +814,7 @@ function captionLineStyle(style: NonNullable<Scene['captionStyle']>, index: numb
       : typography.paragraphAlign === 'justify'
         ? 'space-between'
         : 'center';
+  const px = (value: number) => value * renderScale;
   const withTypography = (lineStyle: React.CSSProperties): React.CSSProperties => ({
     ...lineStyle,
     justifyContent,
@@ -791,10 +828,12 @@ function captionLineStyle(style: NonNullable<Scene['captionStyle']>, index: numb
     alignItems: 'baseline',
     justifyContent,
     flexWrap: 'wrap',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
     columnGap: '0.23em',
     rowGap: '0.08em',
-    borderRadius: 10,
-    padding: isLandscape ? '8px 18px 10px' : '10px 19px 12px',
+    borderRadius: px(8),
+    padding: `${px(5)}px ${px(10)}px ${px(7)}px`,
     fontSize,
     lineHeight: 1.04,
     fontWeight: 850,
@@ -811,25 +850,25 @@ function captionLineStyle(style: NonNullable<Scene['captionStyle']>, index: numb
     return withTypography({...base, background: 'transparent', color: 'white', fontWeight: 950, boxShadow: 'none', textShadow: '0 8px 34px rgba(0,0,0,.52)'});
   }
   if (style === 'editorial-card') {
-    return withTypography({...base, borderRadius: 8, background: 'rgba(255,250,240,.96)', fontFamily: 'Georgia, Times New Roman, serif', boxShadow: '0 18px 44px rgba(43,29,14,.18)'});
+    return withTypography({...base, borderRadius: px(7), background: 'rgba(255,250,240,.96)', fontFamily: 'Georgia, Times New Roman, serif', boxShadow: '0 18px 44px rgba(43,29,14,.18)'});
   }
   if (style === 'neon-ribbon') {
     return withTypography({...base, borderRadius: 999, background: 'linear-gradient(135deg, rgba(8,13,20,.88), rgba(4,47,46,.84))', color: '#ecfeff', border: '1px solid rgba(94,234,212,.36)', boxShadow: '0 18px 46px rgba(13,148,136,.24)', textTransform: 'uppercase'});
   }
   if (style === 'kinetic-stack') {
-    return withTypography({...base, borderRadius: 8, background: index % 2 ? '#111827' : '#f8fafc', color: index % 2 ? '#f8fafc' : '#0f172a', transform: `rotate(${index % 2 ? 1.2 : -1.5}deg)`, boxShadow: '0 18px 42px rgba(0,0,0,.22)'});
+    return withTypography({...base, borderRadius: px(6), background: index % 2 ? '#111827' : '#f8fafc', color: index % 2 ? '#f8fafc' : '#0f172a', transform: `rotate(${index % 2 ? 1.2 : -1.5}deg)`, boxShadow: '0 18px 42px rgba(0,0,0,.22)'});
   }
   if (style === 'minimal-subtitle') {
-    return withTypography({...base, borderRadius: 0, background: 'rgba(0,0,0,.56)', color: 'white', boxShadow: 'none', fontWeight: 740, padding: isLandscape ? '7px 16px 9px' : '8px 18px 10px'});
+    return withTypography({...base, borderRadius: 0, background: 'rgba(0,0,0,.56)', color: 'white', boxShadow: 'none', fontWeight: 740, padding: `${px(5)}px ${px(12)}px ${px(7)}px`});
   }
   if (style === 'device-callout') {
-    return withTypography({...base, position: 'relative', borderRadius: 14, background: 'linear-gradient(135deg, rgba(255,255,255,.97), rgba(219,234,254,.94))', color: '#0f172a', boxShadow: '0 16px 40px rgba(15,23,42,.22)'});
+    return withTypography({...base, position: 'relative', borderRadius: px(10), background: 'linear-gradient(135deg, rgba(255,255,255,.97), rgba(219,234,254,.94))', color: '#0f172a', boxShadow: '0 16px 40px rgba(15,23,42,.22)'});
   }
   if (style === 'creator-pop') {
     return withTypography({...base, background: 'transparent', color: 'white', boxShadow: 'none', fontWeight: 950, textTransform: 'uppercase', textShadow: '0 2px 0 #111827, 2px 0 0 #111827, -2px 0 0 #111827, 0 -2px 0 #111827, 0 10px 30px rgba(0,0,0,.52)'});
   }
   if (style === 'karaoke-card') {
-    return withTypography({...base, borderRadius: 12, background: 'linear-gradient(135deg, rgba(17,24,39,.82), rgba(49,46,129,.72))', color: 'rgba(255,255,255,.74)', border: '1px solid rgba(255,255,255,.16)', boxShadow: '0 18px 52px rgba(0,0,0,.32)'});
+    return withTypography({...base, borderRadius: px(12), background: 'linear-gradient(135deg, rgba(17,24,39,.82), rgba(49,46,129,.72))', color: 'rgba(255,255,255,.74)', border: '1px solid rgba(255,255,255,.16)', boxShadow: '0 18px 52px rgba(0,0,0,.32)'});
   }
   return withTypography(base);
 }
