@@ -268,7 +268,7 @@ body.preview-page {
 
 .audio-controls {
   display: grid;
-  grid-template-columns: 110px minmax(160px, 1fr) 88px minmax(160px, 1fr) auto;
+  grid-template-columns: 110px minmax(160px, 1fr) 88px minmax(160px, 1fr) 92px auto;
   gap: 8px;
   margin: 0 0 16px;
   padding: 10px;
@@ -298,6 +298,60 @@ body.preview-page {
 
 .audio-controls input[type="checkbox"] {
   accent-color: #2dd4bf;
+}
+
+.music-library-controls {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(220px, 1fr) auto minmax(180px, .8fr);
+  gap: 8px;
+  margin: -8px 0 16px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, .54);
+}
+
+.music-library-controls label {
+  display: grid;
+  gap: 6px;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.music-library-controls select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, .72);
+  color: #f8fafc;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  padding: 0 9px;
+}
+
+.music-library-controls button {
+  align-self: end;
+  min-height: 34px;
+  border: 1px solid rgba(45, 212, 191, .36);
+  border-radius: 8px;
+  background: rgba(45, 212, 191, .12);
+  color: #99f6e4;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 0 12px;
+}
+
+.music-library-controls span {
+  align-self: end;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.3;
 }
 
 .audio-controls strong,
@@ -1449,6 +1503,7 @@ body.clean .preview-stage.square {
   .caption-style-tray,
   .caption-controls,
   .audio-controls,
+  .music-library-controls,
   .preview-transport,
   .shortcut-strip {
     grid-column: 1;
@@ -1554,6 +1609,18 @@ body.clean .preview-stage.square {
 
   .audio-status {
     justify-self: end;
+  }
+
+  .music-library-controls {
+    grid-template-columns: minmax(110px, .8fr) minmax(150px, 1fr);
+    gap: 7px;
+    margin-bottom: 8px;
+    padding: 8px;
+  }
+
+  .music-library-controls button,
+  .music-library-controls span {
+    align-self: stretch;
   }
 
   .preview-transport {
@@ -1750,6 +1817,10 @@ body.clean .preview-stage.square {
     grid-template-columns: 86px 1fr auto;
   }
 
+  .music-library-controls {
+    grid-template-columns: 1fr;
+  }
+
   .preview-transport {
     grid-template-columns: 1fr;
   }
@@ -1826,6 +1897,7 @@ body.preview-page {
 .caption-style-tray,
 .caption-controls,
 .audio-controls,
+.music-library-controls,
 .preview-transport {
   border-radius: 8px;
 }
@@ -1849,6 +1921,7 @@ body.preview-page {
 
 .caption-controls,
 .audio-controls,
+.music-library-controls,
 .preview-transport {
   background: color-mix(in srgb, var(--preview-surface) 88%, transparent);
   border-color: var(--line);
@@ -1857,6 +1930,7 @@ body.preview-page {
 
 .caption-controls label,
 .audio-controls label,
+.music-library-controls label,
 .preview-transport label {
   color: color-mix(in srgb, var(--text) 74%, var(--muted));
 }
@@ -1864,6 +1938,7 @@ body.preview-page {
 .caption-controls select,
 .caption-controls input,
 .audio-controls input,
+.music-library-controls select,
 .preview-transport select {
   border-radius: 8px;
   border-color: var(--line);
@@ -1874,6 +1949,7 @@ body.preview-page {
 .caption-controls input:focus,
 .caption-controls select:focus,
 .audio-controls input:focus,
+.music-library-controls select:focus,
 .preview-transport select:focus {
   border-color: color-mix(in srgb, var(--preview-primary) 72%, white 10%);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--preview-primary) 16%, transparent);

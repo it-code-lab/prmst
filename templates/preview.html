@@ -164,7 +164,27 @@
         <input id="musicVolume" type="range" min="0" max="1" step="0.01" value="0.18" />
         <strong id="musicVolumeValue">18%</strong>
       </label>
+      <label>
+        <span>Ducking</span>
+        <input id="musicDucking" type="checkbox" checked />
+      </label>
       <span id="audioStatus" class="audio-status">Audio ready</span>
+    </section>
+    <section class="music-library-controls" aria-label="Background music library">
+      <label>
+        Category
+        <select id="musicCategorySelect">
+          <option value="">Loading music...</option>
+        </select>
+      </label>
+      <label>
+        Preview track
+        <select id="musicTrackSelect">
+          <option value="">No library tracks loaded</option>
+        </select>
+      </label>
+      <button id="applyMusicBtn" type="button">Apply music</button>
+      <span id="musicLibraryStatus">Drop audio into remotion/public/music/category folders.</span>
     </section>
     <section class="preview-transport" aria-label="Preview timeline controls">
       <div class="time-readout">

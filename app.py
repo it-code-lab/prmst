@@ -31,6 +31,14 @@ ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov", "webm", "mkv"}
 ALLOWED_AUDIO_EXTENSIONS = {"mp3", "wav", "m4a", "aac", "ogg"}
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 ALLOWED_BACKGROUND_EXTENSIONS = ALLOWED_IMAGE_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS
+MUSIC_CATEGORIES = {
+    "kids": "Kids",
+    "bedtime": "Bedtime",
+    "horror": "Horror",
+    "mythology": "Mythology",
+    "motivation": "Motivation",
+    "emotional": "Emotional",
+}
 CLIP_MODES = {"device-screen", "full-screen", "background", "overlay"}
 THUMBNAIL_BUMPER_POSITIONS = {"none", "start", "end"}
 THUMBNAIL_BUMPER_FITS = {"cover", "contain"}
@@ -386,6 +394,7 @@ def normalize_preview_settings(settings: Any) -> dict[str, Any]:
         music_volume = float(audio.get("musicVolume", 0.18))
     except (TypeError, ValueError):
         music_volume = 0.18
+    music_asset = normalize_music_asset(audio.get("musicAsset"))
 
     style = str(captions.get("style") or "")
     position = str(captions.get("position") or "")
@@ -424,9 +433,23 @@ def normalize_preview_settings(settings: Any) -> dict[str, Any]:
             "voiceoverDefaultVersion": 2,
             "musicEnabled": bool(audio.get("musicEnabled", True)),
             "musicVolume": min(1, max(0, music_volume)),
+            "musicAsset": music_asset,
+            "musicDucking": truthy_form_value(audio.get("musicDucking"), True),
         },
         "playbackRate": min(1.5, max(0.75, playback_rate)),
     }
+
+
+def normalize_music_asset(value: Any) -> str:
+    asset = str(value or "").strip().replace("\\", "/")
+    if not asset:
+        return ""
+    if not asset.startswith("music/") or ".." in asset.split("/"):
+        return ""
+    if not is_allowed(asset, ALLOWED_AUDIO_EXTENSIONS):
+        return ""
+    path = REMOTION_PUBLIC_DIR / asset
+    return asset if path.exists() and path.is_file() else ""
 
 
 def normalize_hex_color(value: Any) -> str:
@@ -1541,6 +1564,34 @@ def list_projects():
     return jsonify({"projects": projects})
 
 
+@app.get("/api/music-library")
+def music_library():
+    root = REMOTION_PUBLIC_DIR / "music"
+    categories: list[dict[str, Any]] = []
+    for category_id, label in MUSIC_CATEGORIES.items():
+        category_dir = root / category_id
+        tracks: list[dict[str, Any]] = []
+        if category_dir.exists():
+            for path in sorted(category_dir.iterdir()):
+                if not path.is_file() or not is_allowed(path.name, ALLOWED_AUDIO_EXTENSIONS):
+                    continue
+                asset = f"music/{category_id}/{path.name}"
+                title = path.stem.replace("_", " ").replace("-", " ").strip().title() or path.name
+                tracks.append({
+                    "id": asset,
+                    "category": category_id,
+                    "title": title,
+                    "asset": asset,
+                    "durationSeconds": probe_media_duration(path),
+                })
+        categories.append({
+            "id": category_id,
+            "label": label,
+            "tracks": tracks,
+        })
+    return jsonify({"categories": categories})
+
+
 def uploaded_asset(field_name: str, public_dir: Path, project_id: str, prefix: str, allowed: set[str], existing_asset: Any = None) -> str | None:
     filename = save_upload(request.files.get(field_name), public_dir, prefix, allowed)
     if filename:
@@ -1951,6 +2002,10 @@ def render_project(project_id: str):
     if custom_background_asset and not custom_background_duration:
         custom_background_duration = probe_media_duration(REMOTION_PUBLIC_DIR / str(custom_background_asset))
 
+    preview_settings = normalize_preview_settings(project.get("previewSettings"))
+    audio_settings = preview_settings.get("audio", {}) if isinstance(preview_settings.get("audio"), dict) else {}
+    selected_music_asset = audio_settings.get("musicAsset") or assets.get("backgroundMusic")
+
     props = {
         "title": project.get("title"),
         "productName": project.get("productName"),
@@ -1963,7 +2018,7 @@ def render_project(project_id: str):
         "screenAsset": screen_asset,
         "screenDurationSeconds": screen_duration,
         "voiceoverAsset": assets.get("voiceover"),
-        "backgroundMusicAsset": assets.get("backgroundMusic"),
+        "backgroundMusicAsset": selected_music_asset,
         "customBackgroundAsset": custom_background_asset,
         "customBackgroundDurationSeconds": custom_background_duration,
         "logoAsset": assets.get("logo"),
@@ -1972,7 +2027,7 @@ def render_project(project_id: str):
         "layout": project.get("layout"),
         "scenes": project.get("scenes", []),
         "clips": project.get("clips", []),
-        "previewSettings": project.get("previewSettings"),
+        "previewSettings": preview_settings,
     }
     props_path.write_text(json.dumps(props, indent=2), encoding="utf-8")
 

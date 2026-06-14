@@ -51,7 +51,12 @@ const voiceoverVolumeValue = document.querySelector('#voiceoverVolumeValue');
 const musicEnabled = document.querySelector('#musicEnabled');
 const musicVolume = document.querySelector('#musicVolume');
 const musicVolumeValue = document.querySelector('#musicVolumeValue');
+const musicDucking = document.querySelector('#musicDucking');
 const audioStatus = document.querySelector('#audioStatus');
+const musicCategorySelect = document.querySelector('#musicCategorySelect');
+const musicTrackSelect = document.querySelector('#musicTrackSelect');
+const applyMusicBtn = document.querySelector('#applyMusicBtn');
+const musicLibraryStatus = document.querySelector('#musicLibraryStatus');
 const previewScrubber = document.querySelector('#previewScrubber');
 const currentTimeLabel = document.querySelector('#currentTimeLabel');
 const durationTimeLabel = document.querySelector('#durationTimeLabel');
@@ -165,6 +170,7 @@ let activeCaptionGroupKey = '';
 let lastCaptionRenderKey = '';
 let previewCaptionSettings = loadPreviewCaptionSettings();
 let previewAudioSettings = loadPreviewAudioSettings();
+let musicLibraryCategories = [];
 let playbackState = 'stopped';
 let previewStartedAt = 0;
 let pausedProjectTime = 0;
@@ -187,8 +193,9 @@ if (project.assets?.voiceover && voiceoverAudio) {
   voiceoverAudio.src = assetUrl(project.assets.voiceover);
 }
 
-if (project.assets?.backgroundMusic && musicAudio) {
-  musicAudio.src = assetUrl(project.assets.backgroundMusic);
+if (musicAudio) {
+  const initialMusicAsset = previewAudioSettings.musicAsset || project.assets?.backgroundMusic || '';
+  setMusicSource(initialMusicAsset);
 }
 
 if (project.assets?.logo) {
@@ -821,7 +828,7 @@ function applyAudioSettings() {
     voiceoverAudio.muted = !previewAudioSettings.voiceoverEnabled || !voiceoverAudio.src;
   }
   if (musicAudio) {
-    musicAudio.volume = previewAudioSettings.musicVolume;
+    musicAudio.volume = effectiveMusicVolume();
     musicAudio.muted = !previewAudioSettings.musicEnabled || !musicAudio.src;
   }
   if (voiceoverEnabled) voiceoverEnabled.checked = previewAudioSettings.voiceoverEnabled;
@@ -829,8 +836,20 @@ function applyAudioSettings() {
   if (voiceoverVolumeValue) voiceoverVolumeValue.textContent = `${Math.round(previewAudioSettings.voiceoverVolume * 100)}%`;
   if (musicEnabled) musicEnabled.checked = previewAudioSettings.musicEnabled;
   if (musicVolume) musicVolume.value = String(previewAudioSettings.musicVolume);
-  if (musicVolumeValue) musicVolumeValue.textContent = `${Math.round(previewAudioSettings.musicVolume * 100)}%`;
+  if (musicVolumeValue) {
+    const ducked = previewAudioSettings.musicDucking && voiceoverAudio?.src && previewAudioSettings.voiceoverEnabled;
+    musicVolumeValue.textContent = ducked
+      ? `${Math.round(effectiveMusicVolume() * 100)}% ducked`
+      : `${Math.round(previewAudioSettings.musicVolume * 100)}%`;
+  }
+  if (musicDucking) musicDucking.checked = previewAudioSettings.musicDucking !== false;
   updateAudioStatus();
+}
+
+function effectiveMusicVolume() {
+  const base = Number(previewAudioSettings.musicVolume || 0);
+  const shouldDuck = previewAudioSettings.musicDucking !== false && voiceoverAudio?.src && previewAudioSettings.voiceoverEnabled;
+  return Math.min(1, Math.max(0, shouldDuck ? base * 0.35 : base));
 }
 
 function updateAudioStatus(message = '') {
@@ -839,7 +858,7 @@ function updateAudioStatus(message = '') {
   const hasMusic = Boolean(musicAudio?.src);
   audioStatus.textContent = message || [
     hasVoice ? 'Voiceover' : '',
-    hasMusic ? 'Music' : '',
+    hasMusic ? `Music${previewAudioSettings.musicDucking !== false && hasVoice ? ' ducked' : ''}` : '',
   ].filter(Boolean).join(' + ') || 'No preview audio';
   audioStatus.classList.toggle('has-audio', hasVoice || hasMusic);
 }
@@ -851,6 +870,8 @@ function loadPreviewAudioSettings() {
     voiceoverDefaultVersion: 2,
     musicEnabled: true,
     musicVolume: 0.18,
+    musicAsset: '',
+    musicDucking: true,
   };
   const projectSettings = migratePreviewAudioDefaults(project.previewSettings?.audio || {});
   try {
@@ -866,6 +887,8 @@ function migratePreviewAudioDefaults(settings) {
   if (isOldDefault) migrated.voiceoverVolume = 1.0;
   if (migrated.voiceoverVolume === undefined) migrated.voiceoverVolume = 1.0;
   migrated.voiceoverDefaultVersion = 2;
+  if (migrated.musicAsset === undefined) migrated.musicAsset = '';
+  if (migrated.musicDucking === undefined) migrated.musicDucking = true;
   return migrated;
 }
 
@@ -873,6 +896,115 @@ function savePreviewAudioSettings() {
   previewAudioSettings.voiceoverDefaultVersion = 2;
   localStorage.setItem(audioSettingsKey, JSON.stringify(previewAudioSettings));
   schedulePreviewSettingsSave();
+}
+
+async function loadMusicLibrary() {
+  try {
+    const response = await fetch('/api/music-library', { cache: 'no-store' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not load music library.');
+    musicLibraryCategories = Array.isArray(data.categories) ? data.categories : [];
+    renderMusicLibraryControls();
+  } catch (error) {
+    if (musicCategorySelect) musicCategorySelect.innerHTML = '<option value="">Music unavailable</option>';
+    if (musicTrackSelect) musicTrackSelect.innerHTML = '<option value="">No tracks</option>';
+    if (musicLibraryStatus) musicLibraryStatus.textContent = String(error.message || error);
+  }
+}
+
+function renderMusicLibraryControls() {
+  if (!musicCategorySelect || !musicTrackSelect) return;
+  const categoriesWithTracks = musicLibraryCategories.filter((category) => Array.isArray(category.tracks) && category.tracks.length);
+  musicCategorySelect.innerHTML = [
+    '<option value="">All categories</option>',
+    ...musicLibraryCategories.map((category) => `<option value="${escapeAttribute(category.id)}">${escapeHtml(category.label || category.id)} (${category.tracks?.length || 0})</option>`),
+  ].join('');
+
+  const selectedAsset = previewAudioSettings.musicAsset || '';
+  const selectedCategory = musicLibraryCategories.find((category) => category.tracks?.some((track) => track.asset === selectedAsset))?.id
+    || categoriesWithTracks[0]?.id
+    || '';
+  musicCategorySelect.value = selectedCategory;
+  renderMusicTrackOptions(selectedCategory, selectedAsset);
+  updateMusicLibraryStatus();
+}
+
+function renderMusicTrackOptions(categoryId = musicCategorySelect?.value || '', selectedAsset = previewAudioSettings.musicAsset || '') {
+  if (!musicTrackSelect) return;
+  const tracks = musicLibraryCategories
+    .filter((category) => !categoryId || category.id === categoryId)
+    .flatMap((category) => (category.tracks || []).map((track) => ({ ...track, categoryLabel: category.label || category.id })));
+  const uploadedOption = project.assets?.backgroundMusic
+    ? `<option value="">Uploaded project music</option>`
+    : '<option value="">No library music</option>';
+  musicTrackSelect.innerHTML = uploadedOption + tracks.map((track) => (
+    `<option value="${escapeAttribute(track.asset)}">${escapeHtml(track.title)} · ${escapeHtml(track.categoryLabel)}</option>`
+  )).join('');
+  musicTrackSelect.value = tracks.some((track) => track.asset === selectedAsset) ? selectedAsset : '';
+}
+
+function applySelectedMusicTrack({ play = true } = {}) {
+  const asset = musicTrackSelect?.value || '';
+  previewAudioSettings.musicAsset = asset;
+  setMusicSource(asset || project.assets?.backgroundMusic || '');
+  savePreviewAudioSettings();
+  applyAudioSettings();
+  updateMusicLibraryStatus();
+  if (playbackState === 'playing') {
+    syncAudioToVideo();
+  } else if (play && musicAudio?.src) {
+    try {
+      musicAudio.currentTime = 0;
+    } catch {
+      // Ignore media that is not seekable yet.
+    }
+    updateAudioStatus('Previewing selected music');
+  }
+  if (play && previewAudioSettings.musicEnabled && musicAudio?.src) {
+    musicAudio.play().catch(() => updateAudioStatus('Click Play to enable audio'));
+  }
+}
+
+function setMusicSource(asset) {
+  if (!musicAudio) return;
+  if (!asset) {
+    musicAudio.removeAttribute('src');
+    musicAudio.load?.();
+    return;
+  }
+  const src = assetUrl(asset);
+  if (musicAudio.getAttribute('src') !== src) {
+    musicAudio.src = src;
+    musicAudio.load?.();
+  }
+}
+
+function updateMusicLibraryStatus() {
+  if (!musicLibraryStatus) return;
+  const asset = previewAudioSettings.musicAsset || '';
+  const selectedTrack = musicLibraryCategories.flatMap((category) => category.tracks || []).find((track) => track.asset === asset);
+  const trackCount = musicLibraryCategories.reduce((count, category) => count + (category.tracks?.length || 0), 0);
+  if (selectedTrack) {
+    musicLibraryStatus.textContent = `Applied: ${selectedTrack.title}`;
+  } else if (project.assets?.backgroundMusic) {
+    musicLibraryStatus.textContent = 'Using uploaded project music';
+  } else {
+    musicLibraryStatus.textContent = trackCount ? 'Choose a track to apply to this video.' : 'Add audio files under remotion/public/music/category folders.';
+  }
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value).replace(/"/g, '&quot;');
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    "'": '&#39;',
+    '"': '&quot;',
+  }[char]));
 }
 
 function currentPreviewSettingsPayload() {
@@ -1374,6 +1506,22 @@ function wireAudioControls() {
     savePreviewAudioSettings();
     applyAudioSettings();
   });
+  musicDucking?.addEventListener('change', () => {
+    previewAudioSettings.musicDucking = musicDucking.checked;
+    savePreviewAudioSettings();
+    applyAudioSettings();
+  });
+  musicCategorySelect?.addEventListener('change', () => {
+    renderMusicTrackOptions(musicCategorySelect.value, previewAudioSettings.musicAsset || '');
+    updateMusicLibraryStatus();
+  });
+  musicTrackSelect?.addEventListener('change', () => {
+    applySelectedMusicTrack({ play: true });
+  });
+  applyMusicBtn?.addEventListener('click', () => {
+    applySelectedMusicTrack({ play: true });
+    updateAudioStatus('Music selection applied');
+  });
 }
 
 function wireTransportControls() {
@@ -1528,6 +1676,7 @@ if (!project.assets?.screen) {
 renderCaptionStyleTray();
 wireCaptionControls();
 wireAudioControls();
+loadMusicLibrary();
 wireTransportControls();
 wireKeyboardShortcuts();
 updatePlaybackButtons();

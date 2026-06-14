@@ -134,6 +134,8 @@ type PreviewSettings = {
     voiceoverVolume?: number;
     musicEnabled?: boolean;
     musicVolume?: number;
+    musicAsset?: string;
+    musicDucking?: boolean;
   };
   playbackRate?: number;
 };
@@ -161,7 +163,7 @@ export const defaultPromoProps: PromoProps = {
   layout: {deviceLift: 0, ctaLift: 0},
   previewSettings: {
     captions: {style: '', position: '', groupMode: 'words', wordsPerGroup: 3, sentencesPerGroup: 1, highlightMode: 'word', size: '', boxMode: 'single', paragraphAlign: 'center', fontFamily: '', fontColor: '', fontSizePercent: 100, fontWeight: '', activeStyle: 'color', activeColor: '#facc15'},
-    audio: {voiceoverEnabled: true, voiceoverVolume: 1.0, musicEnabled: true, musicVolume: 0.18},
+    audio: {voiceoverEnabled: true, voiceoverVolume: 1.0, musicEnabled: true, musicVolume: 0.18, musicAsset: '', musicDucking: true},
     playbackRate: 1,
   },
   clips: [],
@@ -414,7 +416,7 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
 
       {ctaVisible ? <CtaEndCard cta={props.cta} isLandscape={isLandscape} /> : null}
       {voiceSrc ? <TimelineAudio src={voiceSrc} playbackRate={renderPlaybackRate} contentDurationSeconds={props.durationSeconds} alignWithContent={false} /> : null}
-      {musicSrc ? <TimelineAudio src={musicSrc} volume={0.18} thumbnailBumper={thumbnailBumper} playbackRate={renderPlaybackRate} contentDurationSeconds={props.durationSeconds} /> : null}
+      {musicSrc && props.previewSettings?.audio?.musicEnabled !== false ? <TimelineAudio src={musicSrc} volume={renderMusicVolume(props.previewSettings, Boolean(voiceSrc))} thumbnailBumper={thumbnailBumper} playbackRate={renderPlaybackRate} contentDurationSeconds={props.durationSeconds} /> : null}
       <ThumbnailBumperOverlay thumbnailSrc={thumbnailSrc} thumbnailBumper={thumbnailBumper} contentDurationSeconds={props.durationSeconds} playbackRate={renderPlaybackRate} />
     </AbsoluteFill>
   );
@@ -526,7 +528,7 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
 
       {ctaVisible ? <LifestyleCta cta={props.cta} isLandscape={isLandscape} isSquare={isSquare} startFrame={Math.round(ctaStartSeconds * fps)} ctaLift={props.layoutSettings.ctaLift} /> : null}
       {props.voiceSrc && props.previewSettings?.audio?.voiceoverEnabled !== false ? <TimelineAudio src={props.voiceSrc} volume={clampNumber(props.previewSettings?.audio?.voiceoverVolume, 0, 1, 1.0)} playbackRate={playbackRate} contentDurationSeconds={props.durationSeconds} alignWithContent={false} /> : null}
-      {props.musicSrc && props.previewSettings?.audio?.musicEnabled !== false ? <TimelineAudio src={props.musicSrc} volume={clampNumber(props.previewSettings?.audio?.musicVolume, 0, 1, 0.18)} playbackRate={playbackRate} thumbnailBumper={props.resolvedThumbnailBumper} contentDurationSeconds={props.durationSeconds} /> : null}
+      {props.musicSrc && props.previewSettings?.audio?.musicEnabled !== false ? <TimelineAudio src={props.musicSrc} volume={renderMusicVolume(props.previewSettings, Boolean(props.voiceSrc))} playbackRate={playbackRate} thumbnailBumper={props.resolvedThumbnailBumper} contentDurationSeconds={props.durationSeconds} /> : null}
       <ThumbnailBumperOverlay thumbnailSrc={props.thumbnailSrc} thumbnailBumper={props.resolvedThumbnailBumper} contentDurationSeconds={props.durationSeconds} playbackRate={playbackRate} />
     </AbsoluteFill>
   );
@@ -1433,6 +1435,12 @@ const TimelineAudio: React.FC<{
   const durationInFrames = Math.max(1, Math.round((contentDurationSeconds / playbackRate) * fps));
   return <Sequence from={from} durationInFrames={durationInFrames}>{audio}</Sequence>;
 };
+
+function renderMusicVolume(previewSettings: PreviewSettings | undefined, hasVoiceover: boolean): number {
+  const base = clampNumber(previewSettings?.audio?.musicVolume, 0, 1, 0.18);
+  const shouldDuck = previewSettings?.audio?.musicDucking !== false && previewSettings?.audio?.voiceoverEnabled !== false && hasVoiceover;
+  return shouldDuck ? base * 0.35 : base;
+}
 
 const ThumbnailBumperOverlay: React.FC<{
   thumbnailSrc: string | null;
