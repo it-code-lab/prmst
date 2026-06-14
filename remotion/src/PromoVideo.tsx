@@ -125,6 +125,7 @@ type PreviewSettings = {
     fontFamily?: '' | 'Inter' | 'Arial' | 'Georgia' | 'Merriweather' | 'Verdana' | 'Trebuchet MS' | 'Tahoma' | 'Comic Sans MS' | 'Hindi Kids' | 'Hindi Story' | 'Hindi Devotional' | 'Hindi Scary';
     fontColor?: string;
     fontSizePercent?: number;
+    offsetYPercent?: number;
     fontWeight?: '' | '500' | '650' | '800' | '950';
     activeStyle?: 'color' | 'pill' | 'underline' | 'glow' | 'none';
     activeColor?: string;
@@ -162,7 +163,7 @@ export const defaultPromoProps: PromoProps = {
   thumbnailBumper: {position: 'none', durationSeconds: 0.5, fit: 'cover'},
   layout: {deviceLift: 0, ctaLift: 0},
   previewSettings: {
-    captions: {style: '', position: '', groupMode: 'words', wordsPerGroup: 3, sentencesPerGroup: 1, highlightMode: 'word', size: '', boxMode: 'single', paragraphAlign: 'center', fontFamily: '', fontColor: '', fontSizePercent: 100, fontWeight: '', activeStyle: 'color', activeColor: '#facc15'},
+    captions: {style: '', position: '', groupMode: 'words', wordsPerGroup: 3, sentencesPerGroup: 1, highlightMode: 'word', size: '', boxMode: 'single', paragraphAlign: 'center', fontFamily: '', fontColor: '', fontSizePercent: 100, offsetYPercent: 0, fontWeight: '', activeStyle: 'color', activeColor: '#facc15'},
     audio: {voiceoverEnabled: true, voiceoverVolume: 1.0, musicEnabled: true, musicVolume: 0.18, musicAsset: '', musicDucking: true},
     playbackRate: 1,
   },
@@ -330,8 +331,9 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
   const isVertical = props.format === 'vertical';
   const isLandscape = props.format === 'landscape';
   const isSquare = props.format === 'square';
+  const projectCta = String(props.cta || '').trim();
 
-  const ctaVisible = seconds >= Math.max(0, props.durationSeconds - 6);
+  const ctaVisible = Boolean(projectCta) && seconds >= Math.max(0, props.durationSeconds - 6);
 
   return (
     <AbsoluteFill style={{backgroundColor: '#0f172a', overflow: 'hidden', fontFamily: 'Inter, Arial, sans-serif'}}>
@@ -414,7 +416,7 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
         </div>
       </div>
 
-      {ctaVisible ? <CtaEndCard cta={props.cta} isLandscape={isLandscape} /> : null}
+      {ctaVisible ? <CtaEndCard cta={projectCta} isLandscape={isLandscape} /> : null}
       {voiceSrc ? <TimelineAudio src={voiceSrc} playbackRate={renderPlaybackRate} contentDurationSeconds={props.durationSeconds} alignWithContent={false} /> : null}
       {musicSrc && props.previewSettings?.audio?.musicEnabled !== false ? <TimelineAudio src={musicSrc} volume={renderMusicVolume(props.previewSettings, Boolean(voiceSrc))} thumbnailBumper={thumbnailBumper} playbackRate={renderPlaybackRate} contentDurationSeconds={props.durationSeconds} /> : null}
       <ThumbnailBumperOverlay thumbnailSrc={thumbnailSrc} thumbnailBumper={thumbnailBumper} contentDurationSeconds={props.durationSeconds} playbackRate={renderPlaybackRate} />
@@ -424,7 +426,7 @@ export const PromoVideo: React.FC<PromoProps> = (props) => {
 
 const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc: string | null; musicSrc: string | null; customBackgroundSrc: string | null; logoSrc: string | null; thumbnailSrc: string | null; resolvedThumbnailBumper: ResolvedThumbnailBumper | null; layoutSettings: Required<LayoutSettings>}> = (props) => {
   const frame = useCurrentFrame();
-  const {fps, width} = useVideoConfig();
+  const {fps, width, height} = useVideoConfig();
   const playbackRate = clampNumber(props.previewSettings?.playbackRate, 0.75, 1.5, 1);
   const projectSeconds = (frame / fps) * playbackRate;
   const seconds = contentSecondsFromProjectTime(projectSeconds, props.durationSeconds, props.resolvedThumbnailBumper);
@@ -433,8 +435,9 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
   const clips = Array.isArray(props.clips) ? props.clips : [];
   const isLandscape = props.format === 'landscape';
   const isSquare = props.format === 'square';
+  const projectCta = String(props.cta || '').trim();
   const ctaStartSeconds = Math.max(0, props.durationSeconds - 5.6);
-  const ctaVisible = seconds >= ctaStartSeconds;
+  const ctaVisible = Boolean(projectCta) && seconds >= ctaStartSeconds;
   const progress = seconds / Math.max(1, props.durationSeconds);
   const bgScale = interpolate(progress, [0, 1], [1.02, 1.08], {extrapolateRight: 'clamp'});
   const allCaptionWords = React.useMemo(() => timelineCaptionWords(props.scenes), [props.scenes]);
@@ -445,6 +448,7 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
   const sceneFrames = Math.max(1, Math.round((scene.end - scene.start) * fps));
   const sceneProgress = Math.min(1, sceneFrame / sceneFrames);
   const camera = cameraTransform(scene.motion, sceneProgress, scene.motionAmount);
+  const captionOffsetY = (height * clampNumber(props.previewSettings?.captions?.offsetYPercent, -50, 50, 0)) / 100;
   return (
     <AbsoluteFill style={{backgroundColor: '#eee2cf', overflow: 'hidden', fontFamily: 'Inter, Arial, sans-serif'}}>
       <AbsoluteFill style={{transform: camera}}>
@@ -510,7 +514,7 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
           ...captionPositionStyle(scene, isLandscape, isSquare),
           display: 'flex',
           justifyContent: captionJustify(scene, isLandscape),
-          transform: captionTransform(scene, captionIn),
+          transform: captionTransform(scene, captionIn, captionOffsetY),
           opacity: interpolate(captionIn, [0, 1], [0, 1]),
         }}
       >
@@ -526,7 +530,7 @@ const LifestylePromo: React.FC<PromoProps & {screenSrc: string | null; voiceSrc:
         />
       </div>
 
-      {ctaVisible ? <LifestyleCta cta={props.cta} isLandscape={isLandscape} isSquare={isSquare} startFrame={Math.round(ctaStartSeconds * fps)} ctaLift={props.layoutSettings.ctaLift} /> : null}
+      {ctaVisible ? <LifestyleCta cta={projectCta} isLandscape={isLandscape} isSquare={isSquare} startFrame={Math.round(ctaStartSeconds * fps)} ctaLift={props.layoutSettings.ctaLift} /> : null}
       {props.voiceSrc && props.previewSettings?.audio?.voiceoverEnabled !== false ? <TimelineAudio src={props.voiceSrc} volume={clampNumber(props.previewSettings?.audio?.voiceoverVolume, 0, 1, 1.0)} playbackRate={playbackRate} contentDurationSeconds={props.durationSeconds} alignWithContent={false} /> : null}
       {props.musicSrc && props.previewSettings?.audio?.musicEnabled !== false ? <TimelineAudio src={props.musicSrc} volume={renderMusicVolume(props.previewSettings, Boolean(props.voiceSrc))} playbackRate={playbackRate} thumbnailBumper={props.resolvedThumbnailBumper} contentDurationSeconds={props.durationSeconds} /> : null}
       <ThumbnailBumperOverlay thumbnailSrc={props.thumbnailSrc} thumbnailBumper={props.resolvedThumbnailBumper} contentDurationSeconds={props.durationSeconds} playbackRate={playbackRate} />
@@ -787,18 +791,19 @@ function captionJustify(scene: Scene & typeof sceneDefaults, isLandscape: boolea
   return 'center';
 }
 
-function captionTransform(scene: Scene & typeof sceneDefaults, captionIn: number): string {
+function captionTransform(scene: Scene & typeof sceneDefaults, captionIn: number, offsetY = 0): string {
   const amount = Math.min(2.2, Math.max(0.5, Number.isFinite(scene.captionAnimationAmount) ? scene.captionAnimationAmount : sceneDefaults.captionAnimationAmount));
+  const offset = Number.isFinite(offsetY) && offsetY !== 0 ? `translateY(${offsetY}px) ` : '';
   if (scene.captionAnimation === 'pop') {
-    return `scale(${interpolate(captionIn, [0, 1], [Math.max(0.76, 1 - (0.12 * amount)), 1])})`;
+    return `${offset}scale(${interpolate(captionIn, [0, 1], [Math.max(0.76, 1 - (0.12 * amount)), 1])})`;
   }
   if (scene.captionAnimation === 'slide-mask') {
-    return `translateX(${interpolate(captionIn, [0, 1], [-18 * amount, 0])}px)`;
+    return `${offset}translateX(${interpolate(captionIn, [0, 1], [-18 * amount, 0])}px)`;
   }
   if (scene.captionAnimation === 'none') {
-    return 'none';
+    return offset || 'none';
   }
-  return `translateY(${interpolate(captionIn, [0, 1], [16 * amount, 0])}px) scale(${interpolate(captionIn, [0, 1], [0.97, 1])})`;
+  return `${offset}translateY(${interpolate(captionIn, [0, 1], [16 * amount, 0])}px) scale(${interpolate(captionIn, [0, 1], [0.97, 1])})`;
 }
 
 function captionPreviewStageWidth(format: PromoProps['format']): number {

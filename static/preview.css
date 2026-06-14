@@ -825,8 +825,10 @@ kbd {
   flex-direction: column;
   align-items: center;
   gap: 5px;
+  transform: translateY(var(--caption-offset-y, 0%));
   transform-origin: center;
   pointer-events: none;
+  --caption-offset-y: 0%;
   --caption-rise-y: 22px;
   --caption-pop-start: .86;
   --caption-slide-x: -26px;

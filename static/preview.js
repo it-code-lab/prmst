@@ -26,6 +26,8 @@ const sceneCamera = document.querySelector('.scene-camera');
 const tabletStage = document.querySelector('.tablet-stage');
 const captionStyleTray = document.querySelector('#captionStyleTray');
 const captionPositionSelect = document.querySelector('#previewCaptionPosition');
+const captionOffsetYInput = document.querySelector('#previewCaptionOffsetY');
+const captionOffsetYValue = document.querySelector('#previewCaptionOffsetYValue');
 const captionGroupModeSelect = document.querySelector('#previewCaptionGroupMode');
 const captionWordsInput = document.querySelector('#previewWordsPerGroup');
 const captionWordsValue = document.querySelector('#previewWordsValue');
@@ -208,7 +210,8 @@ if (thumbnailBumper && thumbnailBumperImage) {
   thumbnailBumperImage.style.objectFit = thumbnailBumper.fit;
 }
 
-ctaPill.textContent = project.cta || 'Try it free today';
+const projectCta = String(project.cta || '').trim();
+ctaPill.textContent = projectCta;
 
 function normalizeThumbnailBumper(settings, asset) {
   if (!asset) return null;
@@ -319,7 +322,7 @@ function setCaption(caption, scene, seconds, words = []) {
     ? (boxMode === 'lines' ? splitCaptionWords(group.words) : [group.words])
     : (boxMode === 'lines' ? fallbackLines : [fallbackLines.flat()]);
   const groupKey = `${scene?.start || 0}|${group.words.map((word) => word.text).join(' ')}`;
-  const renderKey = `${groupKey}|${group.activeIndex}|${previewCaptionSettings.groupMode}|${previewCaptionSettings.wordsPerGroup}|${previewCaptionSettings.sentencesPerGroup}|${previewCaptionSettings.highlightMode}|${previewCaptionSettings.boxMode}|${previewCaptionSettings.paragraphAlign}|${previewCaptionSettings.fontFamily}|${previewCaptionSettings.fontColor}|${previewCaptionSettings.fontSizePercent}|${previewCaptionSettings.fontWeight}|${previewCaptionSettings.activeStyle}|${previewCaptionSettings.activeColor}|${stage.dataset.captionStyle}|${stage.dataset.captionPosition}|${stage.dataset.captionSize}`;
+  const renderKey = `${groupKey}|${group.activeIndex}|${previewCaptionSettings.groupMode}|${previewCaptionSettings.wordsPerGroup}|${previewCaptionSettings.sentencesPerGroup}|${previewCaptionSettings.highlightMode}|${previewCaptionSettings.boxMode}|${previewCaptionSettings.paragraphAlign}|${previewCaptionSettings.fontFamily}|${previewCaptionSettings.fontColor}|${previewCaptionSettings.fontSizePercent}|${previewCaptionSettings.offsetYPercent}|${previewCaptionSettings.fontWeight}|${previewCaptionSettings.activeStyle}|${previewCaptionSettings.activeColor}|${stage.dataset.captionStyle}|${stage.dataset.captionPosition}|${stage.dataset.captionSize}`;
 
   if (lastCaptionRenderKey === renderKey) return;
   lastCaptionRenderKey = renderKey;
@@ -466,7 +469,7 @@ function updatePreview() {
   setTraySelected(effectiveCaptionStyle(scene));
   setTimingBadge(entry.timingSource);
   updateTransport(seconds);
-  ctaPill.classList.toggle('hidden', bumperActive || contentSeconds < ctaStart);
+  ctaPill.classList.toggle('hidden', !projectCta || bumperActive || contentSeconds < ctaStart);
   thumbnailBumperImage?.classList.toggle('hidden', !bumperActive);
 
   if (seconds >= totalDuration) {
@@ -502,6 +505,7 @@ function applySceneDesign(scene) {
     previewCaptionSettings.fontFamily,
     previewCaptionSettings.fontColor,
     previewCaptionSettings.fontSizePercent,
+    previewCaptionSettings.offsetYPercent,
     previewCaptionSettings.fontWeight,
     previewCaptionSettings.activeStyle,
     previewCaptionSettings.activeColor,
@@ -532,6 +536,7 @@ function applySceneDesign(scene) {
     captionChip.style.setProperty('--caption-user-color', safeHexColor(previewCaptionSettings.fontColor, '#ffffff'));
     captionChip.style.setProperty('--caption-active-color', safeHexColor(previewCaptionSettings.activeColor, '#facc15'));
     captionChip.style.setProperty('--caption-font', `${previewCaptionFontSizePx(captionSize)}px`);
+    captionChip.style.setProperty('--caption-offset-y', `${clampCaptionCount(previewCaptionSettings.offsetYPercent, -50, 50, 0)}%`);
     captionChip.style.setProperty('--caption-user-weight', previewCaptionSettings.fontWeight || '850');
     sceneCamera.dataset.motion = scene.motion || DEFAULT_SCENE.motion;
     tabletStage.dataset.device = scene.device || DEFAULT_SCENE.device;
@@ -1313,6 +1318,7 @@ function loadPreviewCaptionSettings() {
     fontFamily: '',
     fontColor: '',
     fontSizePercent: 100,
+    offsetYPercent: 0,
     fontWeight: '',
     activeStyle: 'color',
     activeColor: '#facc15',
@@ -1350,6 +1356,8 @@ function syncCaptionControls() {
   if (captionFontColorInput) captionFontColorInput.value = safeHexColor(previewCaptionSettings.fontColor, '#ffffff');
   if (captionFontSizeInput) captionFontSizeInput.value = String(clampCaptionCount(previewCaptionSettings.fontSizePercent, 70, 180, 100));
   if (captionFontSizeValue) captionFontSizeValue.textContent = `${clampCaptionCount(previewCaptionSettings.fontSizePercent, 70, 180, 100)}%`;
+  if (captionOffsetYInput) captionOffsetYInput.value = String(clampCaptionCount(previewCaptionSettings.offsetYPercent, -50, 50, 0));
+  if (captionOffsetYValue) captionOffsetYValue.textContent = `${clampCaptionCount(previewCaptionSettings.offsetYPercent, -50, 50, 0)}%`;
   if (captionWeightSelect) captionWeightSelect.value = previewCaptionSettings.fontWeight || '';
   if (captionBoxModeSelect) captionBoxModeSelect.value = previewCaptionSettings.boxMode === 'lines' ? 'lines' : 'single';
   if (captionParagraphAlignSelect) captionParagraphAlignSelect.value = ['left', 'center', 'right', 'justify'].includes(previewCaptionSettings.paragraphAlign) ? previewCaptionSettings.paragraphAlign : 'center';
@@ -1361,6 +1369,13 @@ function wireCaptionControls() {
   syncCaptionControls();
   captionPositionSelect?.addEventListener('change', () => {
     previewCaptionSettings.position = captionPositionSelect.value;
+    savePreviewCaptionSettings();
+    activeSceneKey = '';
+    updatePreview();
+  });
+  captionOffsetYInput?.addEventListener('input', () => {
+    previewCaptionSettings.offsetYPercent = clampCaptionCount(captionOffsetYInput.value, -50, 50, 0);
+    if (captionOffsetYValue) captionOffsetYValue.textContent = `${previewCaptionSettings.offsetYPercent}%`;
     savePreviewCaptionSettings();
     activeSceneKey = '';
     updatePreview();
@@ -1463,6 +1478,7 @@ function wireCaptionControls() {
       fontFamily: '',
       fontColor: '',
       fontSizePercent: 100,
+      offsetYPercent: 0,
       fontWeight: '',
       activeStyle: 'color',
       activeColor: '#facc15',

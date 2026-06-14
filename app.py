@@ -377,6 +377,10 @@ def normalize_preview_settings(settings: Any) -> dict[str, Any]:
     except (TypeError, ValueError):
         font_size_percent = 100
     try:
+        offset_y_percent = int(float(captions.get("offsetYPercent", 0)))
+    except (TypeError, ValueError):
+        offset_y_percent = 0
+    try:
         playback_rate = float(data.get("playbackRate", 1))
     except (TypeError, ValueError):
         playback_rate = 1
@@ -423,6 +427,7 @@ def normalize_preview_settings(settings: Any) -> dict[str, Any]:
             "fontFamily": font_family if font_family in CAPTION_FONT_PRESETS else "",
             "fontColor": font_color,
             "fontSizePercent": min(180, max(70, font_size_percent)),
+            "offsetYPercent": min(50, max(-50, offset_y_percent)),
             "fontWeight": font_weight if font_weight in {"", "500", "650", "800", "950"} else "",
             "activeStyle": active_style if active_style in {"color", "pill", "underline", "glow", "none"} else "color",
             "activeColor": active_color,
@@ -780,11 +785,15 @@ def ensure_scene_coverage(scenes: list[dict[str, Any]], duration_seconds: int, p
         scenes[-1]["end"] = round(target_end, 2)
         return scenes
 
+    if not str(cta or "").strip():
+        scenes[-1]["end"] = round(target_end, 2)
+        return scenes
+
     scenes.append({
         "start": round(max(0.0, last_end), 2),
         "end": round(target_end, 2),
-        "caption": cta or product_name,
-        "narration": cta or f"Start creating with {product_name}.",
+        "caption": cta,
+        "narration": cta,
     })
     return scenes
 
@@ -792,10 +801,11 @@ def ensure_scene_coverage(scenes: list[dict[str, Any]], duration_seconds: int, p
 def save_upload(file_storage, destination_dir: Path, prefix: str, allowed: set[str]) -> str | None:
     if not file_storage or not file_storage.filename:
         return None
-    original = secure_filename(file_storage.filename)
-    if not original or not is_allowed(original, allowed):
-        raise ValueError(f"Unsupported file type: {original}")
+    original = str(file_storage.filename or "")
     ext = file_ext(original)
+    if not ext or ext not in allowed:
+        safe_name = secure_filename(original) or original
+        raise ValueError(f"Unsupported file type: {safe_name}")
     filename = f"{prefix}.{ext}"
     destination_dir.mkdir(parents=True, exist_ok=True)
     file_storage.save(destination_dir / filename)
@@ -805,10 +815,11 @@ def save_upload(file_storage, destination_dir: Path, prefix: str, allowed: set[s
 def save_clip_upload(file_storage, destination_dir: Path, index: int) -> str:
     if not file_storage or not file_storage.filename:
         raise ValueError("Clip row is missing a video file.")
-    original = secure_filename(file_storage.filename)
-    if not original or not is_allowed(original, ALLOWED_VIDEO_EXTENSIONS):
-        raise ValueError(f"Unsupported clip file type: {original}")
+    original = str(file_storage.filename or "")
     ext = file_ext(original)
+    if not ext or ext not in ALLOWED_VIDEO_EXTENSIONS:
+        safe_name = secure_filename(original) or original
+        raise ValueError(f"Unsupported clip file type: {safe_name}")
     filename = f"clip_{index:02d}.{ext}"
     destination_dir.mkdir(parents=True, exist_ok=True)
     file_storage.save(destination_dir / filename)
@@ -1616,7 +1627,8 @@ def project_payload_from_form(project_id: str, existing_project: dict[str, Any] 
     title = request.form.get("title", "Untitled Promo").strip() or "Untitled Promo"
     product_name = request.form.get("productName", title).strip() or title
     target_url = request.form.get("targetUrl", "").strip()
-    cta = request.form.get("cta", "Try it free").strip() or "Try it free"
+    cta_value = request.form.get("cta")
+    cta = cta_value.strip() if cta_value is not None else "Try it free"
     project_type = request.form.get("projectType", "screen-promo")
     if project_type not in {"screen-promo", "audio-video"}:
         project_type = "screen-promo"
