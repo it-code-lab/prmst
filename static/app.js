@@ -219,6 +219,11 @@ function showMessage(text, type = '') {
   message.className = `message ${type}`;
 }
 
+function showSaveMessage(text, type = '') {
+  showMessage(text, type);
+  message?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 function hideMessage() {
   message.className = 'message hidden';
   message.textContent = '';
@@ -1717,57 +1722,63 @@ function escapeHtml(value) {
   }[c]));
 }
 
+async function readJsonResponse(res) {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: text };
+  }
+}
+
 projectForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   hideMessage();
-  const scenes = collectScenes();
-  if (!scenes.length) {
-    showMessage('Please add at least one scene with valid start/end times.', 'error');
-    return;
-  }
-  const projectType = selectedProjectType();
-  const voiceoverFile = voiceoverInput?.files?.[0];
-  const screenFile = screenRecordingInput?.files?.[0];
-  if (projectType === 'audio-video' && !voiceoverFile && !editingProjectAssets.voiceover) {
-    showMessage('Choose an audio track before saving an audio-to-video project.', 'error');
-    return;
-  }
-  if (projectType === 'screen-promo' && !screenFile && !editingProjectAssets.screen) {
-    showMessage('Choose a screen recording video before saving a screen promo project.', 'error');
-    return;
-  }
-  const customBackgroundFile = customBackgroundInput?.files?.[0];
-  const hasCustomBackground = Boolean(customBackgroundFile || editingProjectAssets.customBackground);
-  const usesCustomBackground = scenes.some((scene) => scene.background === 'custom-media');
-  if (usesCustomBackground && !hasCustomBackground) {
-    showMessage('Upload a custom background media file before using the Uploaded media background.', 'error');
-    return;
-  }
-  const clips = collectClips();
-  const formData = new FormData(projectForm);
-  if (thumbnailClipboardFile) {
-    formData.set('thumbnailImage', thumbnailClipboardFile, thumbnailClipboardFile.name || 'thumbnail-paste.png');
-  }
-  formData.set('scenes', JSON.stringify(scenes));
-  formData.set('clips', JSON.stringify(clips));
   const submitBtn = projectForm.querySelector('button[type="submit"]');
   const isEditing = Boolean(editingProjectId);
   submitBtn.disabled = true;
   submitBtn.textContent = isEditing ? 'Updating...' : 'Saving...';
   try {
+    const scenes = collectScenes();
+    if (!scenes.length) {
+      throw new Error('Please add at least one scene with valid start/end times.');
+    }
+    const projectType = selectedProjectType();
+    const voiceoverFile = voiceoverInput?.files?.[0];
+    const screenFile = screenRecordingInput?.files?.[0];
+    if (projectType === 'audio-video' && !voiceoverFile && !editingProjectAssets.voiceover) {
+      throw new Error('Choose an audio track before saving an audio-to-video project.');
+    }
+    if (projectType === 'screen-promo' && !screenFile && !editingProjectAssets.screen) {
+      throw new Error('Choose a screen recording video before saving a screen promo project.');
+    }
+    const customBackgroundFile = customBackgroundInput?.files?.[0];
+    const hasCustomBackground = Boolean(customBackgroundFile || editingProjectAssets.customBackground);
+    const usesCustomBackground = scenes.some((scene) => scene.background === 'custom-media');
+    if (usesCustomBackground && !hasCustomBackground) {
+      throw new Error('Upload a custom background media file before using the Uploaded media background.');
+    }
+    const clips = collectClips();
+    const formData = new FormData(projectForm);
+    if (thumbnailClipboardFile) {
+      formData.set('thumbnailImage', thumbnailClipboardFile, thumbnailClipboardFile.name || 'thumbnail-paste.png');
+    }
+    formData.set('scenes', JSON.stringify(scenes));
+    formData.set('clips', JSON.stringify(clips));
     const res = await fetch(isEditing ? `/api/projects/${encodeURIComponent(editingProjectId)}` : '/api/projects', {
       method: isEditing ? 'PATCH' : 'POST',
       body: formData,
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Could not save project');
+    const data = await readJsonResponse(res);
+    if (!res.ok) throw new Error(data.error || data.details || 'Could not save project');
     editingProjectId = data.project.id;
     editingProjectAssets = data.project.assets && typeof data.project.assets === 'object' ? data.project.assets : {};
     populateProjectForm(data.project);
-    showMessage(`${isEditing ? 'Project updated' : 'Project saved'}: ${data.project.id}\nNext: open Preview or click Render MP4 in the Projects panel.`, 'success');
+    showSaveMessage(`${isEditing ? 'Project updated' : 'Project saved'}: ${data.project.id}\nNext: open Preview or click Render MP4 in the Projects panel.`, 'success');
     await loadProjects();
   } catch (err) {
-    showMessage(String(err.message || err), 'error');
+    showSaveMessage(String(err.message || err), 'error');
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = editingProjectId ? 'Update Project' : 'Save Project';
